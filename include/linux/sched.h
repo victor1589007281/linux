@@ -775,838 +775,959 @@ struct kmap_ctrl {
 #endif
 };
 
+
 struct task_struct {
 #ifdef CONFIG_THREAD_INFO_IN_TASK
-	/*
-	 * For reasons of header soup (see current_thread_info()), this
-	 * must be the first element of task_struct.
-	 */
-	struct thread_info		thread_info;
+    /*
+     * For reasons of header soup (see current_thread_info()), this
+     * must be the first element of task_struct.
+     */
+    // 由于头文件的复杂性（见 current_thread_info()），这必须是 task_struct 的第一个元素。
+    struct thread_info		thread_info;
 #endif
-	unsigned int			__state;
+    unsigned int			__state; // 任务状态
 
-	/* saved state for "spinlock sleepers" */
-	unsigned int			saved_state;
+    /* saved state for "spinlock sleepers" */
+    // "自旋锁睡眠者"的保存状态
+    unsigned int			saved_state;
 
-	/*
-	 * This begins the randomizable portion of task_struct. Only
-	 * scheduling-critical items should be added above here.
-	 */
-	randomized_struct_fields_start
+    /*
+     * This begins the randomizable portion of task_struct. Only
+     * scheduling-critical items should be added above here.
+     */
+    // 这开始了 task_struct 的可随机化部分。只有调度关键项应添加在此上方。
+    randomized_struct_fields_start
 
-	void				*stack;
-	refcount_t			usage;
-	/* Per task flags (PF_*), defined further below: */
-	unsigned int			flags;
-	unsigned int			ptrace;
+    void				*stack; // 任务栈指针
+    refcount_t			usage; // 引用计数
+    /* Per task flags (PF_*), defined further below: */
+    // 每个任务的标志（PF_*），在下面进一步定义：
+    unsigned int			flags;
+    unsigned int			ptrace; // ptrace 标志
 
 #ifdef CONFIG_MEM_ALLOC_PROFILING
-	struct alloc_tag		*alloc_tag;
+    struct alloc_tag		*alloc_tag; // 内存分配标签
 #endif
 
 #ifdef CONFIG_SMP
-	int				on_cpu;
-	struct __call_single_node	wake_entry;
-	unsigned int			wakee_flips;
-	unsigned long			wakee_flip_decay_ts;
-	struct task_struct		*last_wakee;
+    int				on_cpu; // 当前运行的 CPU
+    struct __call_single_node	wake_entry; // 唤醒条目
+    unsigned int			wakee_flips; // 唤醒翻转计数
+    unsigned long			wakee_flip_decay_ts; // 唤醒翻转衰减时间戳
+    struct task_struct		*last_wakee; // 最后唤醒的任务
 
-	/*
-	 * recent_used_cpu is initially set as the last CPU used by a task
-	 * that wakes affine another task. Waker/wakee relationships can
-	 * push tasks around a CPU where each wakeup moves to the next one.
-	 * Tracking a recently used CPU allows a quick search for a recently
-	 * used CPU that may be idle.
-	 */
-	int				recent_used_cpu;
-	int				wake_cpu;
+    /*
+     * recent_used_cpu is initially set as the last CPU used by a task
+     * that wakes affine another task. Waker/wakee relationships can
+     * push tasks around a CPU where each wakeup moves to the next one.
+     * Tracking a recently used CPU allows a quick search for a recently
+     * used CPU that may be idle.
+     */
+    // recent_used_cpu 最初设置为唤醒另一个任务的任务最后使用的 CPU。唤醒者/被唤醒者关系可以将任务推到一个 CPU 上，每次唤醒移动到下一个。跟踪最近使用的 CPU 允许快速搜索可能空闲的最近使用的 CPU。
+    int				recent_used_cpu; // 最近使用的 CPU
+    int				wake_cpu; // 唤醒的 CPU
 #endif
-	int				on_rq;
+    int				on_rq; // 是否在运行队列上
 
-	int				prio;
-	int				static_prio;
-	int				normal_prio;
-	unsigned int			rt_priority;
+    int				prio; // 优先级
+    int				static_prio; // 静态优先级
+    int				normal_prio; // 正常优先级
+    unsigned int			rt_priority; // 实时优先级
 
-	struct sched_entity		se;
-	struct sched_rt_entity		rt;
-	struct sched_dl_entity		dl;
-	struct sched_dl_entity		*dl_server;
+    struct sched_entity		se; // 调度实体
+    struct sched_rt_entity		rt; // 实时调度实体
+    struct sched_dl_entity		dl; // 调度截止时间实体
+    struct sched_dl_entity		*dl_server; // 调度截止时间服务器
 #ifdef CONFIG_SCHED_CLASS_EXT
-	struct sched_ext_entity		scx;
+    struct sched_ext_entity		scx; // 扩展调度实体
 #endif
-	const struct sched_class	*sched_class;
+    const struct sched_class	*sched_class; // 调度类
 
 #ifdef CONFIG_SCHED_CORE
-	struct rb_node			core_node;
-	unsigned long			core_cookie;
-	unsigned int			core_occupation;
+    struct rb_node			core_node; // 核心节点
+    unsigned long			core_cookie; // 核心 cookie
+    unsigned int			core_occupation; // 核心占用
 #endif
 
 #ifdef CONFIG_CGROUP_SCHED
-	struct task_group		*sched_task_group;
+    struct task_group		*sched_task_group; // 调度任务组
 #endif
-
 
 #ifdef CONFIG_UCLAMP_TASK
-	/*
-	 * Clamp values requested for a scheduling entity.
-	 * Must be updated with task_rq_lock() held.
-	 */
-	struct uclamp_se		uclamp_req[UCLAMP_CNT];
-	/*
-	 * Effective clamp values used for a scheduling entity.
-	 * Must be updated with task_rq_lock() held.
-	 */
-	struct uclamp_se		uclamp[UCLAMP_CNT];
+    /*
+     * Clamp values requested for a scheduling entity.
+     * Must be updated with task_rq_lock() held.
+     */
+    // 调度实体请求的钳位值。必须在持有 task_rq_lock() 时更新。
+    struct uclamp_se		uclamp_req[UCLAMP_CNT];
+    /*
+     * Effective clamp values used for a scheduling entity.
+     * Must be updated with task_rq_lock() held.
+     */
+    // 调度实体使用的有效钳位值。必须在持有 task_rq_lock() 时更新。
+    struct uclamp_se		uclamp[UCLAMP_CNT];
 #endif
 
-	struct sched_statistics         stats;
+    struct sched_statistics         stats; // 调度统计信息
 
 #ifdef CONFIG_PREEMPT_NOTIFIERS
-	/* List of struct preempt_notifier: */
-	struct hlist_head		preempt_notifiers;
+    /* List of struct preempt_notifier: */
+    // 预占通知器列表
+    struct hlist_head		preempt_notifiers;
 #endif
 
 #ifdef CONFIG_BLK_DEV_IO_TRACE
-	unsigned int			btrace_seq;
+    unsigned int			btrace_seq; // 块设备 IO 跟踪序列
 #endif
 
-	unsigned int			policy;
-	unsigned long			max_allowed_capacity;
-	int				nr_cpus_allowed;
-	const cpumask_t			*cpus_ptr;
-	cpumask_t			*user_cpus_ptr;
-	cpumask_t			cpus_mask;
-	void				*migration_pending;
+    unsigned int			policy; // 调度策略
+    unsigned long			max_allowed_capacity; // 最大允许容量
+    int				nr_cpus_allowed; // 允许的 CPU 数量
+    const cpumask_t			*cpus_ptr; // CPU 掩码指针
+    cpumask_t			*user_cpus_ptr; // 用户 CPU 掩码指针
+    cpumask_t			cpus_mask; // CPU 掩码
+    void				*migration_pending; // 迁移挂起
 #ifdef CONFIG_SMP
-	unsigned short			migration_disabled;
+    unsigned short			migration_disabled; // 禁用迁移
 #endif
-	unsigned short			migration_flags;
+    unsigned short			migration_flags; // 迁移标志
 
 #ifdef CONFIG_PREEMPT_RCU
-	int				rcu_read_lock_nesting;
-	union rcu_special		rcu_read_unlock_special;
-	struct list_head		rcu_node_entry;
-	struct rcu_node			*rcu_blocked_node;
+    int				rcu_read_lock_nesting; // RCU 读锁嵌套计数
+    union rcu_special		rcu_read_unlock_special; // RCU 读解锁特殊标志
+    struct list_head		rcu_node_entry; // RCU 节点条目
+    struct rcu_node			*rcu_blocked_node; // RCU 阻塞节点
 #endif /* #ifdef CONFIG_PREEMPT_RCU */
 
 #ifdef CONFIG_TASKS_RCU
-	unsigned long			rcu_tasks_nvcsw;
-	u8				rcu_tasks_holdout;
-	u8				rcu_tasks_idx;
-	int				rcu_tasks_idle_cpu;
-	struct list_head		rcu_tasks_holdout_list;
-	int				rcu_tasks_exit_cpu;
-	struct list_head		rcu_tasks_exit_list;
+    unsigned long			rcu_tasks_nvcsw; // RCU 任务上下文切换计数
+    u8				rcu_tasks_holdout; // RCU 任务保持
+    u8				rcu_tasks_idx; // RCU 任务索引
+    int				rcu_tasks_idle_cpu; // RCU 任务空闲 CPU
+    struct list_head		rcu_tasks_holdout_list; // RCU 任务保持列表
+    int				rcu_tasks_exit_cpu; // RCU 任务退出 CPU
+    struct list_head		rcu_tasks_exit_list; // RCU 任务退出列表
 #endif /* #ifdef CONFIG_TASKS_RCU */
 
 #ifdef CONFIG_TASKS_TRACE_RCU
-	int				trc_reader_nesting;
-	int				trc_ipi_to_cpu;
-	union rcu_special		trc_reader_special;
-	struct list_head		trc_holdout_list;
-	struct list_head		trc_blkd_node;
-	int				trc_blkd_cpu;
+    int				trc_reader_nesting; // 跟踪 RCU 读者嵌套计数
+    int				trc_ipi_to_cpu; // 跟踪 RCU IPI 到 CPU
+    union rcu_special		trc_reader_special; // 跟踪 RCU 读者特殊标志
+    struct list_head		trc_holdout_list; // 跟踪 RCU 保持列表
+    struct list_head		trc_blkd_node; // 跟踪 RCU 阻塞节点
+    int				trc_blkd_cpu; // 跟踪 RCU 阻塞 CPU
 #endif /* #ifdef CONFIG_TASKS_TRACE_RCU */
 
-	struct sched_info		sched_info;
+    struct sched_info		sched_info; // 调度信息
 
-	struct list_head		tasks;
+    struct list_head		tasks; // 任务列表
 #ifdef CONFIG_SMP
-	struct plist_node		pushable_tasks;
-	struct rb_node			pushable_dl_tasks;
+    struct plist_node		pushable_tasks; // 可推送任务
+    struct rb_node			pushable_dl_tasks; // 可推送的截止时间任务
 #endif
 
-	struct mm_struct		*mm;
-	struct mm_struct		*active_mm;
-	struct address_space		*faults_disabled_mapping;
+    struct mm_struct		*mm; // 内存管理结构
+    struct mm_struct		*active_mm; // 活动内存管理结构
+    struct address_space		*faults_disabled_mapping; // 禁用故障映射
 
-	int				exit_state;
-	int				exit_code;
-	int				exit_signal;
-	/* The signal sent when the parent dies: */
-	int				pdeath_signal;
-	/* JOBCTL_*, siglock protected: */
-	unsigned long			jobctl;
+    int				exit_state; // 退出状态
+    int				exit_code; // 退出代码
+    int				exit_signal; // 退出信号
+    /* The signal sent when the parent dies: */
+    // 父进程死亡时发送的信号
+    int				pdeath_signal;
+    /* JOBCTL_*, siglock protected: */
+    // JOBCTL_*，受 siglock 保护
+    unsigned long			jobctl;
 
-	/* Used for emulating ABI behavior of previous Linux versions: */
-	unsigned int			personality;
+    /* Used for emulating ABI behavior of previous Linux versions: */
+    // 用于模拟以前 Linux 版本的 ABI 行为
+    unsigned int			personality;
 
-	/* Scheduler bits, serialized by scheduler locks: */
-	unsigned			sched_reset_on_fork:1;
-	unsigned			sched_contributes_to_load:1;
-	unsigned			sched_migrated:1;
+    /* Scheduler bits, serialized by scheduler locks: */
+    // 调度器位，由调度器锁序列化
+    unsigned			sched_reset_on_fork:1;
+    unsigned			sched_contributes_to_load:1;
+    unsigned			sched_migrated:1;
 
-	/* Force alignment to the next boundary: */
-	unsigned			:0;
+    /* Force alignment to the next boundary: */
+    // 强制对齐到下一个边界
+    unsigned			:0;
 
-	/* Unserialized, strictly 'current' */
+    /* Unserialized, strictly 'current' */
+    // 未序列化，严格的 'current'
 
-	/*
-	 * This field must not be in the scheduler word above due to wakelist
-	 * queueing no longer being serialized by p->on_cpu. However:
-	 *
-	 * p->XXX = X;			ttwu()
-	 * schedule()			  if (p->on_rq && ..) // false
-	 *   smp_mb__after_spinlock();	  if (smp_load_acquire(&p->on_cpu) && //true
-	 *   deactivate_task()		      ttwu_queue_wakelist())
-	 *     p->on_rq = 0;			p->sched_remote_wakeup = Y;
-	 *
-	 * guarantees all stores of 'current' are visible before
-	 * ->sched_remote_wakeup gets used, so it can be in this word.
-	 */
-	unsigned			sched_remote_wakeup:1;
+    /*
+     * This field must not be in the scheduler word above due to wakelist
+     * queueing no longer being serialized by p->on_cpu. However:
+     *
+     * p->XXX = X;			ttwu()
+     * schedule()			  if (p->on_rq && ..) // false
+     *   smp_mb__after_spinlock();	  if (smp_load_acquire(&p->on_cpu) && //true
+     *   deactivate_task()		      ttwu_queue_wakelist())
+     *     p->on_rq = 0;			p->sched_remote_wakeup = Y;
+     *
+     * guarantees all stores of 'current' are visible before
+     * ->sched_remote_wakeup gets used, so it can be in this word.
+     */
+    // 由于 wakelist 排队不再由 p->on_cpu 序列化，因此此字段不得位于上面的调度器字中。然而：
+    // 保证所有 'current' 的存储在 ->sched_remote_wakeup 被使用之前都是可见的，因此它可以在这个字中。
+    unsigned			sched_remote_wakeup:1;
 #ifdef CONFIG_RT_MUTEXES
-	unsigned			sched_rt_mutex:1;
+    unsigned			sched_rt_mutex:1;
 #endif
 
-	/* Bit to tell TOMOYO we're in execve(): */
-	unsigned			in_execve:1;
-	unsigned			in_iowait:1;
+    /* Bit to tell TOMOYO we're in execve(): */
+    // 告诉 TOMOYO 我们在 execve() 中的位
+    unsigned			in_execve:1;
+    unsigned			in_iowait:1;
 #ifndef TIF_RESTORE_SIGMASK
-	unsigned			restore_sigmask:1;
+    unsigned			restore_sigmask:1;
 #endif
 #ifdef CONFIG_MEMCG_V1
-	unsigned			in_user_fault:1;
+    unsigned			in_user_fault:1;
 #endif
 #ifdef CONFIG_LRU_GEN
-	/* whether the LRU algorithm may apply to this access */
-	unsigned			in_lru_fault:1;
+    /* whether the LRU algorithm may apply to this access */
+    // LRU 算法是否可以应用于此访问
+    unsigned			in_lru_fault:1;
 #endif
 #ifdef CONFIG_COMPAT_BRK
-	unsigned			brk_randomized:1;
+    unsigned			brk_randomized:1;
 #endif
 #ifdef CONFIG_CGROUPS
-	/* disallow userland-initiated cgroup migration */
-	unsigned			no_cgroup_migration:1;
-	/* task is frozen/stopped (used by the cgroup freezer) */
-	unsigned			frozen:1;
+    /* disallow userland-initiated cgroup migration */
+    // 禁止用户态发起的 cgroup 迁移
+    unsigned			no_cgroup_migration:1;
+    /* task is frozen/stopped (used by the cgroup freezer) */
+    // 任务被冻结/停止（由 cgroup 冷冻器使用）
+    unsigned			frozen:1;
 #endif
 #ifdef CONFIG_BLK_CGROUP
-	unsigned			use_memdelay:1;
+    unsigned			use_memdelay:1;
 #endif
 #ifdef CONFIG_PSI
-	/* Stalled due to lack of memory */
-	unsigned			in_memstall:1;
+    /* Stalled due to lack of memory */
+    // 由于内存不足而停滞
+    unsigned			in_memstall:1;
 #endif
 #ifdef CONFIG_PAGE_OWNER
-	/* Used by page_owner=on to detect recursion in page tracking. */
-	unsigned			in_page_owner:1;
+    /* Used by page_owner=on to detect recursion in page tracking. */
+    // 由 page_owner=on 用于检测页面跟踪中的递归。
+    unsigned			in_page_owner:1;
 #endif
 #ifdef CONFIG_EVENTFD
-	/* Recursion prevention for eventfd_signal() */
-	unsigned			in_eventfd:1;
+    /* Recursion prevention for eventfd_signal() */
+    // eventfd_signal() 的递归预防
+    unsigned			in_eventfd:1;
 #endif
 #ifdef CONFIG_ARCH_HAS_CPU_PASID
-	unsigned			pasid_activated:1;
+    unsigned			pasid_activated:1;
 #endif
 #ifdef	CONFIG_CPU_SUP_INTEL
-	unsigned			reported_split_lock:1;
+    unsigned			reported_split_lock:1;
 #endif
 #ifdef CONFIG_TASK_DELAY_ACCT
-	/* delay due to memory thrashing */
-	unsigned                        in_thrashing:1;
+    /* delay due to memory thrashing */
+    // 由于内存抖动导致的延迟
+    unsigned                        in_thrashing:1;
 #endif
 #ifdef CONFIG_PREEMPT_RT
-	struct netdev_xmit		net_xmit;
+    struct netdev_xmit		net_xmit; // 网络传输
 #endif
-	unsigned long			atomic_flags; /* Flags requiring atomic access. */
+    unsigned long			atomic_flags; /* Flags requiring atomic access. */
+    // 需要原子访问的标志
 
-	struct restart_block		restart_block;
+    struct restart_block		restart_block; // 重启块
 
-	pid_t				pid;
-	pid_t				tgid;
+    pid_t				pid; // 进程 ID
+    pid_t				tgid; // 线程组 ID
 
 #ifdef CONFIG_STACKPROTECTOR
-	/* Canary value for the -fstack-protector GCC feature: */
-	unsigned long			stack_canary;
+    /* Canary value for the -fstack-protector GCC feature: */
+    // -fstack-protector GCC 特性的金丝雀值
+    unsigned long			stack_canary;
 #endif
-	/*
-	 * Pointers to the (original) parent process, youngest child, younger sibling,
-	 * older sibling, respectively.  (p->father can be replaced with
-	 * p->real_parent->pid)
-	 */
+    /*
+     * Pointers to the (original) parent process, youngest child, younger sibling,
+     * older sibling, respectively.  (p->father can be replaced with
+     * p->real_parent->pid)
+     */
+    // 指向（原始）父进程、最小的子进程、较小的兄弟姐妹、较大的兄弟姐妹的指针。（p->father 可以用 p->real_parent->pid 替换）
 
-	/* Real parent process: */
-	struct task_struct __rcu	*real_parent;
+    /* Real parent process: */
+    // 真实的父进程
+    struct task_struct __rcu	*real_parent;
 
-	/* Recipient of SIGCHLD, wait4() reports: */
-	struct task_struct __rcu	*parent;
+    /* Recipient of SIGCHLD, wait4() reports: */
+    // SIGCHLD 的接收者，wait4() 报告：
+    struct task_struct __rcu	*parent;
 
-	/*
-	 * Children/sibling form the list of natural children:
-	 */
-	struct list_head		children;
-	struct list_head		sibling;
-	struct task_struct		*group_leader;
+    /*
+     * Children/sibling form the list of natural children:
+     */
+    // 子进程/兄弟姐妹形成自然子进程列表：
+    struct list_head		children;
+    struct list_head		sibling;
+    struct task_struct		*group_leader; // 组长
 
-	/*
-	 * 'ptraced' is the list of tasks this task is using ptrace() on.
-	 *
-	 * This includes both natural children and PTRACE_ATTACH targets.
-	 * 'ptrace_entry' is this task's link on the p->parent->ptraced list.
-	 */
-	struct list_head		ptraced;
-	struct list_head		ptrace_entry;
+    /*
+     * 'ptraced' is the list of tasks this task is using ptrace() on.
+     *
+     * This includes both natural children and PTRACE_ATTACH targets.
+     * 'ptrace_entry' is this task's link on the p->parent->ptraced list.
+     */
+    // 'ptraced' 是此任务正在使用 ptrace() 的任务列表。
+    // 这包括自然子进程和 PTRACE_ATTACH 目标。
+    // 'ptrace_entry' 是此任务在 p->parent->ptraced 列表上的链接。
+    struct list_head		ptraced;
+    struct list_head		ptrace_entry;
 
-	/* PID/PID hash table linkage. */
-	struct pid			*thread_pid;
-	struct hlist_node		pid_links[PIDTYPE_MAX];
-	struct list_head		thread_node;
+    /* PID/PID hash table linkage. */
+    // PID/PID 哈希表链接。
+    struct pid			*thread_pid;
+    struct hlist_node		pid_links[PIDTYPE_MAX];
+    struct list_head		thread_node;
 
-	struct completion		*vfork_done;
+    struct completion		*vfork_done; // vfork 完成
 
-	/* CLONE_CHILD_SETTID: */
-	int __user			*set_child_tid;
+    /* CLONE_CHILD_SETTID: */
+    int __user			*set_child_tid; // 设置子线程 ID
 
-	/* CLONE_CHILD_CLEARTID: */
-	int __user			*clear_child_tid;
+    /* CLONE_CHILD_CLEARTID: */
+    int __user			*clear_child_tid; // 清除子线程 ID
 
-	/* PF_KTHREAD | PF_IO_WORKER */
-	void				*worker_private;
+    /* PF_KTHREAD | PF_IO_WORKER */
+    void				*worker_private; // 工作线程私有数据
 
-	u64				utime;
-	u64				stime;
+    u64				utime; // 用户时间
+    u64				stime; // 系统时间
 #ifdef CONFIG_ARCH_HAS_SCALED_CPUTIME
-	u64				utimescaled;
-	u64				stimescaled;
+    u64				utimescaled; // 缩放的用户时间
+    u64				stimescaled; // 缩放的系统时间
 #endif
-	u64				gtime;
-	struct prev_cputime		prev_cputime;
+    u64				gtime; // 全局时间
+    struct prev_cputime		prev_cputime; // 先前的 CPU 时间
 #ifdef CONFIG_VIRT_CPU_ACCOUNTING_GEN
-	struct vtime			vtime;
+    struct vtime			vtime; // 虚拟时间
 #endif
 
 #ifdef CONFIG_NO_HZ_FULL
-	atomic_t			tick_dep_mask;
+    atomic_t			tick_dep_mask; // 时钟依赖掩码
 #endif
-	/* Context switch counts: */
-	unsigned long			nvcsw;
-	unsigned long			nivcsw;
+    /* Context switch counts: */
+    // 上下文切换计数：
+    unsigned long			nvcsw; // 自愿上下文切换计数
+    unsigned long			nivcsw; // 非自愿上下文切换计数
 
-	/* Monotonic time in nsecs: */
-	u64				start_time;
+    /* Monotonic time in nsecs: */
+    // 单调时间（纳秒）
+    u64				start_time;
 
-	/* Boot based time in nsecs: */
-	u64				start_boottime;
+    /* Boot based time in nsecs: */
+    // 基于启动的时间（纳秒）
+    u64				start_boottime;
 
-	/* MM fault and swap info: this can arguably be seen as either mm-specific or thread-specific: */
-	unsigned long			min_flt;
-	unsigned long			maj_flt;
+    /* MM fault and swap info: this can arguably be seen as either mm-specific or thread-specific: */
+    // MM 故障和交换信息：这可以被认为是特定于 mm 或特定于线程的：
+    unsigned long			min_flt; // 次要故障计数
+    unsigned long			maj_flt; // 主要故障计数
 
-	/* Empty if CONFIG_POSIX_CPUTIMERS=n */
-	struct posix_cputimers		posix_cputimers;
+    /* Empty if CONFIG_POSIX_CPUTIMERS=n */
+    // 如果 CONFIG_POSIX_CPUTIMERS=n 则为空
+    struct posix_cputimers		posix_cputimers;
 
 #ifdef CONFIG_POSIX_CPU_TIMERS_TASK_WORK
-	struct posix_cputimers_work	posix_cputimers_work;
+    struct posix_cputimers_work	posix_cputimers_work; // POSIX CPU 计时器工作
 #endif
 
-	/* Process credentials: */
+    /* Process credentials: */
+    // 进程凭据：
 
-	/* Tracer's credentials at attach: */
-	const struct cred __rcu		*ptracer_cred;
+    /* Tracer's credentials at attach: */
+    // 附加时跟踪器的凭据：
+    const struct cred __rcu		*ptracer_cred;
 
-	/* Objective and real subjective task credentials (COW): */
-	const struct cred __rcu		*real_cred;
+    /* Objective and real subjective task credentials (COW): */
+    // 客观和真实的主观任务凭据（COW）：
+    const struct cred __rcu		*real_cred;
 
-	/* Effective (overridable) subjective task credentials (COW): */
-	const struct cred __rcu		*cred;
+    /* Effective (overridable) subjective task credentials (COW): */
+    // 有效（可覆盖）的主观任务凭据（COW）：
+    const struct cred __rcu		*cred;
 
 #ifdef CONFIG_KEYS
-	/* Cached requested key. */
-	struct key			*cached_requested_key;
+    /* Cached requested key. */
+    // 缓存的请求密钥。
+    struct key			*cached_requested_key;
 #endif
 
-	/*
-	 * executable name, excluding path.
-	 *
-	 * - normally initialized setup_new_exec()
-	 * - access it with [gs]et_task_comm()
-	 * - lock it with task_lock()
-	 */
-	char				comm[TASK_COMM_LEN];
+    /*
+     * executable name, excluding path.
+     *
+     * - normally initialized setup_new_exec()
+     * - access it with [gs]et_task_comm()
+     * - lock it with task_lock()
+     */
+    // 可执行文件名，不包括路径。
+    // - 通常在 setup_new_exec() 中初始化
+    // - 使用 [gs]et_task_comm() 访问它
+    // - 使用 task_lock() 锁定它
+    char				comm[TASK_COMM_LEN];
 
-	struct nameidata		*nameidata;
+    struct nameidata		*nameidata; // 名称数据
 
 #ifdef CONFIG_SYSVIPC
-	struct sysv_sem			sysvsem;
-	struct sysv_shm			sysvshm;
+    struct sysv_sem			sysvsem; // SYSV 信号量
+    struct sysv_shm			sysvshm; // SYSV 共享内存
 #endif
 #ifdef CONFIG_DETECT_HUNG_TASK
-	unsigned long			last_switch_count;
-	unsigned long			last_switch_time;
+    unsigned long			last_switch_count; // 最后一次切换计数
+    unsigned long			last_switch_time; // 最后一次切换时间
 #endif
-	/* Filesystem information: */
-	struct fs_struct		*fs;
+    /* Filesystem information: */
+    // 文件系统信息：
+    struct fs_struct		*fs;
 
-	/* Open file information: */
-	struct files_struct		*files;
+    /* Open file information: */
+    // 打开文件信息：
+    struct files_struct		*files;
 
 #ifdef CONFIG_IO_URING
-	struct io_uring_task		*io_uring;
+    struct io_uring_task		*io_uring; // IO uring 任务
 #endif
 
-	/* Namespaces: */
-	struct nsproxy			*nsproxy;
-
-	/* Signal handlers: */
-	struct signal_struct		*signal;
-	struct sighand_struct __rcu		*sighand;
-	sigset_t			blocked;
-	sigset_t			real_blocked;
-	/* Restored if set_restore_sigmask() was used: */
-	sigset_t			saved_sigmask;
-	struct sigpending		pending;
-	unsigned long			sas_ss_sp;
-	size_t				sas_ss_size;
-	unsigned int			sas_ss_flags;
-
-	struct callback_head		*task_works;
-
+    /* Namespaces: */
+    // 命名空间
+    struct nsproxy *nsproxy;
+    
+    /* Signal handlers: */
+    // 信号处理程序
+    struct signal_struct *signal;
+    struct sighand_struct __rcu *sighand;
+    sigset_t blocked; // 被阻塞的信号集
+    sigset_t real_blocked; // 实际被阻塞的信号集
+    /* Restored if set_restore_sigmask() was used: */
+    // 如果使用了 set_restore_sigmask()，则恢复
+    sigset_t saved_sigmask;
+    struct sigpending pending; // 挂起的信号
+    unsigned long sas_ss_sp; // 信号栈指针
+    size_t sas_ss_size; // 信号栈大小
+    unsigned int sas_ss_flags; // 信号栈标志
+    
+    struct callback_head *task_works; // 任务工作回调
+    
 #ifdef CONFIG_AUDIT
 #ifdef CONFIG_AUDITSYSCALL
-	struct audit_context		*audit_context;
+    struct audit_context *audit_context; // 审计上下文
 #endif
-	kuid_t				loginuid;
-	unsigned int			sessionid;
+    kuid_t loginuid; // 登录用户 ID
+    unsigned int sessionid; // 会话 ID
 #endif
-	struct seccomp			seccomp;
-	struct syscall_user_dispatch	syscall_dispatch;
-
-	/* Thread group tracking: */
-	u64				parent_exec_id;
-	u64				self_exec_id;
-
-	/* Protection against (de-)allocation: mm, files, fs, tty, keyrings, mems_allowed, mempolicy: */
-	spinlock_t			alloc_lock;
-
-	/* Protection of the PI data structures: */
-	raw_spinlock_t			pi_lock;
-
-	struct wake_q_node		wake_q;
-
+    struct seccomp seccomp; // seccomp 结构
+    struct syscall_user_dispatch syscall_dispatch; // 系统调用用户调度
+    
+    /* Thread group tracking: */
+    // 线程组跟踪
+    u64 parent_exec_id; // 父执行 ID
+    u64 self_exec_id; // 自身执行 ID
+    
+    /* Protection against (de-)allocation: mm, files, fs, tty, keyrings, mems_allowed, mempolicy: */
+    // 保护 mm、文件、fs、tty、密钥环、mems_allowed、mempolicy 的分配和释放
+    spinlock_t alloc_lock;
+    
+    /* Protection of the PI data structures: */
+    // 保护 PI 数据结构
+    raw_spinlock_t pi_lock;
+    
+    struct wake_q_node wake_q; // 唤醒队列节点
+    
 #ifdef CONFIG_RT_MUTEXES
-	/* PI waiters blocked on a rt_mutex held by this task: */
-	struct rb_root_cached		pi_waiters;
-	/* Updated under owner's pi_lock and rq lock */
-	struct task_struct		*pi_top_task;
-	/* Deadlock detection and priority inheritance handling: */
-	struct rt_mutex_waiter		*pi_blocked_on;
+    /* PI waiters blocked on a rt_mutex held by this task: */
+    // 被此任务持有的 rt_mutex 阻塞的 PI 等待者
+    struct rb_root_cached pi_waiters;
+    /* Updated under owner's pi_lock and rq lock */
+    // 在所有者的 pi_lock 和 rq 锁下更新
+    struct task_struct *pi_top_task;
+    /* Deadlock detection and priority inheritance handling: */
+    // 死锁检测和优先级继承处理
+    struct rt_mutex_waiter *pi_blocked_on;
 #endif
 
 #ifdef CONFIG_DEBUG_MUTEXES
-	/* Mutex deadlock detection: */
-	struct mutex_waiter		*blocked_on;
+    /* Mutex deadlock detection: */
+    // 互斥锁死锁检测
+    struct mutex_waiter *blocked_on;
 #endif
 
 #ifdef CONFIG_DEBUG_ATOMIC_SLEEP
-	int				non_block_count;
+    int non_block_count; // 非阻塞计数
 #endif
 
 #ifdef CONFIG_TRACE_IRQFLAGS
-	struct irqtrace_events		irqtrace;
-	unsigned int			hardirq_threaded;
-	u64				hardirq_chain_key;
-	int				softirqs_enabled;
-	int				softirq_context;
-	int				irq_config;
+    struct irqtrace_events irqtrace; // 中断跟踪事件
+    unsigned int hardirq_threaded; // 硬中断线程化
+    u64 hardirq_chain_key; // 硬中断链键
+    int softirqs_enabled; // 软中断启用
+    int softirq_context; // 软中断上下文
+    int irq_config; // 中断配置
 #endif
 #ifdef CONFIG_PREEMPT_RT
-	int				softirq_disable_cnt;
+    int softirq_disable_cnt; // 软中断禁用计数
 #endif
 
 #ifdef CONFIG_LOCKDEP
-# define MAX_LOCK_DEPTH			48UL
-	u64				curr_chain_key;
-	int				lockdep_depth;
-	unsigned int			lockdep_recursion;
-	struct held_lock		held_locks[MAX_LOCK_DEPTH];
+    # define MAX_LOCK_DEPTH 48UL
+    u64 curr_chain_key; // 当前链键
+    int lockdep_depth; // 锁依赖深度
+    unsigned int lockdep_recursion; // 锁依赖递归
+    struct held_lock held_locks[MAX_LOCK_DEPTH]; // 持有的锁
 #endif
 
 #if defined(CONFIG_UBSAN) && !defined(CONFIG_UBSAN_TRAP)
-	unsigned int			in_ubsan;
+    unsigned int in_ubsan; // 在 UBSAN 中
 #endif
 
-	/* Journalling filesystem info: */
-	void				*journal_info;
-
-	/* Stacked block device info: */
-	struct bio_list			*bio_list;
-
-	/* Stack plugging: */
-	struct blk_plug			*plug;
-
-	/* VM state: */
-	struct reclaim_state		*reclaim_state;
-
-	struct io_context		*io_context;
-
+    /* Journalling filesystem info: */
+    // 日志文件系统信息
+    void *journal_info;
+    
+    /* Stacked block device info: */
+    // 堆叠块设备信息
+    struct bio_list *bio_list;
+    
+    /* Stack plugging: */
+    // 堆栈插入
+    struct blk_plug *plug;
+    
+    /* VM state: */
+    // 虚拟机状态
+    struct reclaim_state *reclaim_state;
+    
+    struct io_context *io_context; // IO 上下文
+    
 #ifdef CONFIG_COMPACTION
-	struct capture_control		*capture_control;
+    struct capture_control *capture_control; // 捕获控制
 #endif
-	/* Ptrace state: */
-	unsigned long			ptrace_message;
-	kernel_siginfo_t		*last_siginfo;
-
-	struct task_io_accounting	ioac;
+    /* Ptrace state: */
+    // Ptrace 状态
+    unsigned long ptrace_message;
+    kernel_siginfo_t *last_siginfo; // 最后一个信号信息
+    
+    struct task_io_accounting ioac; // 任务 IO 计费
 #ifdef CONFIG_PSI
-	/* Pressure stall state */
-	unsigned int			psi_flags;
+    /* Pressure stall state */
+    // 压力停滞状态
+    unsigned int psi_flags;
 #endif
 #ifdef CONFIG_TASK_XACCT
-	/* Accumulated RSS usage: */
-	u64				acct_rss_mem1;
-	/* Accumulated virtual memory usage: */
-	u64				acct_vm_mem1;
-	/* stime + utime since last update: */
-	u64				acct_timexpd;
+    /* Accumulated RSS usage: */
+    // 累积的 RSS 使用量
+    u64 acct_rss_mem1;
+    /* Accumulated virtual memory usage: */
+    // 累积的虚拟内存使用量
+    u64 acct_vm_mem1;
+    /* stime + utime since last update: */
+    // 自上次更新以来的 stime + utime
+    u64 acct_timexpd;
 #endif
 #ifdef CONFIG_CPUSETS
-	/* Protected by ->alloc_lock: */
-	nodemask_t			mems_allowed;
-	/* Sequence number to catch updates: */
-	seqcount_spinlock_t		mems_allowed_seq;
-	int				cpuset_mem_spread_rotor;
+    /* Protected by ->alloc_lock: */
+    // 受 alloc_lock 保护
+    nodemask_t mems_allowed;
+    /* Sequence number to catch updates: */
+    // 捕获更新的序列号
+    seqcount_spinlock_t mems_allowed_seq;
+    int cpuset_mem_spread_rotor; // cpuset 内存扩展转子
 #endif
 #ifdef CONFIG_CGROUPS
-	/* Control Group info protected by css_set_lock: */
-	struct css_set __rcu		*cgroups;
-	/* cg_list protected by css_set_lock and tsk->alloc_lock: */
-	struct list_head		cg_list;
+    /* Control Group info protected by css_set_lock: */
+    // 受 css_set_lock 保护的控制组信息
+    struct css_set __rcu *cgroups;
+    /* cg_list protected by css_set_lock and tsk->alloc_lock: */
+    // 受 css_set_lock 和 tsk->alloc_lock 保护的 cg_list
+    struct list_head cg_list;
 #endif
 #ifdef CONFIG_X86_CPU_RESCTRL
-	u32				closid;
-	u32				rmid;
+u32 closid; // 关闭 ID
+u32 rmid; // RMID
 #endif
 #ifdef CONFIG_FUTEX
-	struct robust_list_head __user	*robust_list;
-#ifdef CONFIG_COMPAT
-	struct compat_robust_list_head __user *compat_robust_list;
-#endif
-	struct list_head		pi_state_list;
-	struct futex_pi_state		*pi_state_cache;
-	struct mutex			futex_exit_mutex;
-	unsigned int			futex_state;
+    struct robust_list_head __user *robust_list; // 健壮列表
+    #ifdef CONFIG_COMPAT
+        struct compat_robust_list_head __user *compat_robust_list; // 兼容健壮列表
+    #endif
+    struct list_head pi_state_list; // PI 状态列表
+    struct futex_pi_state *pi_state_cache; // PI 状态缓存
+    struct mutex futex_exit_mutex; // futex 退出互斥锁
+    unsigned int futex_state; // futex 状态
 #endif
 #ifdef CONFIG_PERF_EVENTS
-	u8				perf_recursion[PERF_NR_CONTEXTS];
-	struct perf_event_context	*perf_event_ctxp;
-	struct mutex			perf_event_mutex;
-	struct list_head		perf_event_list;
+    u8 perf_recursion[PERF_NR_CONTEXTS]; // 性能递归
+    struct perf_event_context *perf_event_ctxp; // 性能事件上下文
+    struct mutex perf_event_mutex; // 性能事件互斥锁
+    struct list_head perf_event_list; // 性能事件列表
 #endif
 #ifdef CONFIG_DEBUG_PREEMPT
-	unsigned long			preempt_disable_ip;
+    unsigned long preempt_disable_ip; // 禁用抢占 IP
 #endif
 #ifdef CONFIG_NUMA
-	/* Protected by alloc_lock: */
-	struct mempolicy		*mempolicy;
-	short				il_prev;
-	u8				il_weight;
-	short				pref_node_fork;
+    /* Protected by alloc_lock: */
+    // 受 alloc_lock 保护
+    struct mempolicy *mempolicy;
+    short il_prev; // 上一个 IL
+    u8 il_weight; // IL 权重
+    short pref_node_fork; // 首选节点分叉
 #endif
 #ifdef CONFIG_NUMA_BALANCING
-	int				numa_scan_seq;
-	unsigned int			numa_scan_period;
-	unsigned int			numa_scan_period_max;
-	int				numa_preferred_nid;
-	unsigned long			numa_migrate_retry;
-	/* Migration stamp: */
-	u64				node_stamp;
-	u64				last_task_numa_placement;
-	u64				last_sum_exec_runtime;
-	struct callback_head		numa_work;
-
-	/*
-	 * This pointer is only modified for current in syscall and
-	 * pagefault context (and for tasks being destroyed), so it can be read
-	 * from any of the following contexts:
-	 *  - RCU read-side critical section
-	 *  - current->numa_group from everywhere
-	 *  - task's runqueue locked, task not running
-	 */
-	struct numa_group __rcu		*numa_group;
-
-	/*
-	 * numa_faults is an array split into four regions:
-	 * faults_memory, faults_cpu, faults_memory_buffer, faults_cpu_buffer
-	 * in this precise order.
-	 *
-	 * faults_memory: Exponential decaying average of faults on a per-node
-	 * basis. Scheduling placement decisions are made based on these
-	 * counts. The values remain static for the duration of a PTE scan.
-	 * faults_cpu: Track the nodes the process was running on when a NUMA
-	 * hinting fault was incurred.
-	 * faults_memory_buffer and faults_cpu_buffer: Record faults per node
-	 * during the current scan window. When the scan completes, the counts
-	 * in faults_memory and faults_cpu decay and these values are copied.
-	 */
-	unsigned long			*numa_faults;
-	unsigned long			total_numa_faults;
-
-	/*
-	 * numa_faults_locality tracks if faults recorded during the last
-	 * scan window were remote/local or failed to migrate. The task scan
-	 * period is adapted based on the locality of the faults with different
-	 * weights depending on whether they were shared or private faults
-	 */
-	unsigned long			numa_faults_locality[3];
-
-	unsigned long			numa_pages_migrated;
+    int numa_scan_seq; // NUMA 扫描序列
+    unsigned int numa_scan_period; // NUMA 扫描周期
+    unsigned int numa_scan_period_max; // NUMA 扫描最大周期
+    int numa_preferred_nid; // NUMA 首选节点 ID
+    unsigned long numa_migrate_retry; // NUMA 迁移重试
+    /* Migration stamp: */
+    // 迁移戳记
+    u64 node_stamp;
+    u64 last_task_numa_placement; // 上次任务 NUMA 放置
+    u64 last_sum_exec_runtime; // 上次执行运行时间总和
+    struct callback_head numa_work; // NUMA 工作回调
+    
+    /*
+     * This pointer is only modified for current in syscall and
+     * pagefault context (and for tasks being destroyed), so it can be read
+     * from any of the following contexts:
+     *  - RCU read-side critical section
+     *  - current->numa_group from everywhere
+     *  - task's runqueue locked, task not running
+     */
+    // 这个指针只在系统调用和页面错误上下文中（以及任务被销毁时）修改，因此可以从以下任何上下文中读取：
+    // - RCU 读取侧临界区
+    // - current->numa_group 从任何地方
+    // - 任务的运行队列被锁定，任务未运行
+    struct numa_group __rcu *numa_group;
+    
+    /*
+     * numa_faults is an array split into four regions:
+     * faults_memory, faults_cpu, faults_memory_buffer, faults_cpu_buffer
+     * in this precise order.
+     *
+     * faults_memory: Exponential decaying average of faults on a per-node
+     * basis. Scheduling placement decisions are made based on these
+     * counts. The values remain static for the duration of a PTE scan.
+     * faults_cpu: Track the nodes the process was running on when a NUMA
+     * hinting fault was incurred.
+     * faults_memory_buffer and faults_cpu_buffer: Record faults per node
+     * during the current scan window. When the scan completes, the counts
+     * in faults_memory and faults_cpu decay and these values are copied.
+     */
+    // numa_faults 是一个数组，分为四个区域：
+    // faults_memory, faults_cpu, faults_memory_buffer, faults_cpu_buffer
+    // 按照这个精确的顺序。
+    //
+    // faults_memory: 每个节点的故障指数衰减平均值。调度放置决策基于这些计数。值在 PTE 扫描期间保持静态。
+    // faults_cpu: 跟踪进程在发生 NUMA 提示故障时运行的节点。
+    // faults_memory_buffer 和 faults_cpu_buffer: 在当前扫描窗口期间记录每个节点的故障。当扫描完成时，faults_memory 和 faults_cpu 中的计数衰减并复制这些值。
+    unsigned long *numa_faults;
+    unsigned long total_numa_faults; // NUMA 故障总数
+    
+    /*
+     * numa_faults_locality tracks if faults recorded during the last
+     * scan window were remote/local or failed to migrate. The task scan
+     * period is adapted based on the locality of the faults with different
+     * weights depending on whether they were shared or private faults
+     */
+    // numa_faults_locality 跟踪在最后一个扫描窗口期间记录的故障是远程/本地还是迁移失败。任务扫描周期根据故障的局部性进行调整，不同的权重取决于它们是共享故障还是私有故障
+    unsigned long numa_faults_locality[3];
+    
+    unsigned long numa_pages_migrated; // NUMA 迁移的页面数
 #endif /* CONFIG_NUMA_BALANCING */
 
 #ifdef CONFIG_RSEQ
-	struct rseq __user *rseq;
-	u32 rseq_len;
-	u32 rseq_sig;
-	/*
-	 * RmW on rseq_event_mask must be performed atomically
-	 * with respect to preemption.
-	 */
-	unsigned long rseq_event_mask;
+    struct rseq __user *rseq; // rseq 结构
+    u32 rseq_len; // rseq 长度
+    u32 rseq_sig; // rseq 信号
+    /*
+     * RmW on rseq_event_mask must be performed atomically
+     * with respect to preemption.
+     */
+    // rseq_event_mask 上的 RmW 必须相对于抢占原子执行
+    unsigned long rseq_event_mask;
 #endif
 
 #ifdef CONFIG_SCHED_MM_CID
-	int				mm_cid;		/* Current cid in mm */
-	int				last_mm_cid;	/* Most recent cid in mm */
-	int				migrate_from_cpu;
-	int				mm_cid_active;	/* Whether cid bitmap is active */
-	struct callback_head		cid_work;
+    int mm_cid; // 当前 mm 中的 CID
+    int last_mm_cid; // 最近的 mm 中的 CID
+    int migrate_from_cpu; // 从 CPU 迁移
+    int mm_cid_active; // CID 位图是否激活
+    struct callback_head cid_work; // CID 工作回调
 #endif
 
-	struct tlbflush_unmap_batch	tlb_ubc;
-
-	/* Cache last used pipe for splice(): */
-	struct pipe_inode_info		*splice_pipe;
-
-	struct page_frag		task_frag;
-
+    struct tlbflush_unmap_batch tlb_ubc; // TLB 刷新取消映射批处理
+    
+    /* Cache last used pipe for splice(): */
+    // 缓存最后使用的管道用于 splice()
+    struct pipe_inode_info *splice_pipe;
+    
+    struct page_frag task_frag; // 页面碎片
+    
 #ifdef CONFIG_TASK_DELAY_ACCT
-	struct task_delay_info		*delays;
+    struct task_delay_info *delays; // 任务延迟信息
 #endif
 
 #ifdef CONFIG_FAULT_INJECTION
-	int				make_it_fail;
-	unsigned int			fail_nth;
+    int make_it_fail; // 使其失败
+    unsigned int fail_nth; // 第 n 次失败
 #endif
-	/*
-	 * When (nr_dirtied >= nr_dirtied_pause), it's time to call
-	 * balance_dirty_pages() for a dirty throttling pause:
-	 */
-	int				nr_dirtied;
-	int				nr_dirtied_pause;
-	/* Start of a write-and-pause period: */
-	unsigned long			dirty_paused_when;
-
+    /*
+     * When (nr_dirtied >= nr_dirtied_pause), it's time to call
+     * balance_dirty_pages() for a dirty throttling pause:
+     */
+    // 当 (nr_dirtied >= nr_dirtied_pause) 时，是时候调用 balance_dirty_pages() 进行脏节流暂停了
+    int nr_dirtied; // 脏页数
+    int nr_dirtied_pause; // 脏页暂停数
+    /* Start of a write-and-pause period: */
+    // 写入和暂停周期的开始
+    unsigned long dirty_paused_when;
+    
 #ifdef CONFIG_LATENCYTOP
-	int				latency_record_count;
-	struct latency_record		latency_record[LT_SAVECOUNT];
+    int latency_record_count; // 延迟记录计数
+    struct latency_record latency_record[LT_SAVECOUNT]; // 延迟记录
 #endif
-	/*
-	 * Time slack values; these are used to round up poll() and
-	 * select() etc timeout values. These are in nanoseconds.
-	 */
-	u64				timer_slack_ns;
-	u64				default_timer_slack_ns;
-
+    /*
+     * Time slack values; these are used to round up poll() and
+     * select() etc timeout values. These are in nanoseconds.
+     */
+    // 时间松弛值；这些用于四舍五入 poll() 和 select() 等超时值。这些值以纳秒为单位。
+    u64 timer_slack_ns;
+    u64 default_timer_slack_ns;
+    
 #if defined(CONFIG_KASAN_GENERIC) || defined(CONFIG_KASAN_SW_TAGS)
-	unsigned int			kasan_depth;
+    unsigned int kasan_depth; // KASAN 深度
 #endif
 
 #ifdef CONFIG_KCSAN
-	struct kcsan_ctx		kcsan_ctx;
-#ifdef CONFIG_TRACE_IRQFLAGS
-	struct irqtrace_events		kcsan_save_irqtrace;
-#endif
-#ifdef CONFIG_KCSAN_WEAK_MEMORY
-	int				kcsan_stack_depth;
-#endif
+    struct kcsan_ctx kcsan_ctx; // KCSAN 上下文
+    #ifdef CONFIG_TRACE_IRQFLAGS
+        struct irqtrace_events kcsan_save_irqtrace; // KCSAN 保存的中断跟踪事件
+    #endif
+    #ifdef CONFIG_KCSAN_WEAK_MEMORY
+        int kcsan_stack_depth; // KCSAN 堆栈深度
+    #endif
 #endif
 
 #ifdef CONFIG_KMSAN
-	struct kmsan_ctx		kmsan_ctx;
+    struct kmsan_ctx kmsan_ctx; // KMSAN 上下文
 #endif
 
 #if IS_ENABLED(CONFIG_KUNIT)
-	struct kunit			*kunit_test;
+    struct kunit *kunit_test; // KUnit 测试
 #endif
 
 #ifdef CONFIG_FUNCTION_GRAPH_TRACER
-	/* Index of current stored address in ret_stack: */
-	int				curr_ret_stack;
-	int				curr_ret_depth;
-
-	/* Stack of return addresses for return function tracing: */
-	unsigned long			*ret_stack;
-
-	/* Timestamp for last schedule: */
-	unsigned long long		ftrace_timestamp;
-
-	/*
-	 * Number of functions that haven't been traced
-	 * because of depth overrun:
-	 */
-	atomic_t			trace_overrun;
-
-	/* Pause tracing: */
-	atomic_t			tracing_graph_pause;
+    /* Index of current stored address in ret_stack: */
+    // ret_stack 中当前存储地址的索引
+    int curr_ret_stack;
+    int curr_ret_depth; // 当前返回深度
+    
+    /* Stack of return addresses for return function tracing: */
+    // 返回函数跟踪的返回地址堆栈
+    unsigned long *ret_stack;
+    
+    /* Timestamp for last schedule: */
+    // 上次调度的时间戳
+    unsigned long long ftrace_timestamp;
+    
+    /*
+     * Number of functions that haven't been traced
+     * because of depth overrun:
+     */
+    // 由于深度超限而未被跟踪的函数数量
+    atomic_t trace_overrun;
+    
+    /* Pause tracing: */
+    // 暂停跟踪
+    atomic_t tracing_graph_pause;
 #endif
 
 #ifdef CONFIG_TRACING
-	/* Bitmask and counter of trace recursion: */
-	unsigned long			trace_recursion;
+    /* Bitmask and counter of trace recursion: */
+    // 跟踪递归的位掩码和计数器
+    unsigned long trace_recursion;
 #endif /* CONFIG_TRACING */
 
 #ifdef CONFIG_KCOV
-	/* See kernel/kcov.c for more details. */
-
-	/* Coverage collection mode enabled for this task (0 if disabled): */
-	unsigned int			kcov_mode;
-
-	/* Size of the kcov_area: */
-	unsigned int			kcov_size;
-
-	/* Buffer for coverage collection: */
-	void				*kcov_area;
-
-	/* KCOV descriptor wired with this task or NULL: */
-	struct kcov			*kcov;
-
-	/* KCOV common handle for remote coverage collection: */
-	u64				kcov_handle;
-
-	/* KCOV sequence number: */
-	int				kcov_sequence;
-
-	/* Collect coverage from softirq context: */
-	unsigned int			kcov_softirq;
+    /* See kernel/kcov.c for more details. */
+    // 参见 kernel/kcov.c 获取更多细节
+    
+    /* Coverage collection mode enabled for this task (0 if disabled): */
+    // 为此任务启用的覆盖收集模式（如果禁用则为 0）
+    unsigned int kcov_mode;
+    
+    /* Size of the kcov_area: */
+    // kcov_area 的大小
+    unsigned int kcov_size;
+    
+    /* Buffer for coverage collection: */
+    // 覆盖收集缓冲区
+    void *kcov_area;
+    
+    /* KCOV descriptor wired with this task or NULL: */
+    // 与此任务连接的 KCOV 描述符或 NULL
+    struct kcov *kcov;
+    
+    /* KCOV common handle for remote coverage collection: */
+    // 远程覆盖收集的 KCOV 通用句柄
+    u64 kcov_handle;
+    
+    /* KCOV sequence number: */
+    // KCOV 序列号
+    int kcov_sequence;
+    
+    /* Collect coverage from softirq context: */
+    // 从软中断上下文收集覆盖
+    unsigned int kcov_softirq;
 #endif
 
 #ifdef CONFIG_MEMCG_V1
-	struct mem_cgroup		*memcg_in_oom;
+    struct mem_cgroup *memcg_in_oom; // OOM 中的内存控制组
 #endif
 
 #ifdef CONFIG_MEMCG
-	/* Number of pages to reclaim on returning to userland: */
-	unsigned int			memcg_nr_pages_over_high;
-
-	/* Used by memcontrol for targeted memcg charge: */
-	struct mem_cgroup		*active_memcg;
-
-	/* Cache for current->cgroups->memcg->objcg lookups: */
-	struct obj_cgroup		*objcg;
+    /* Number of pages to reclaim on returning to userland: */
+    // 返回用户态时要回收的页面数
+    unsigned int memcg_nr_pages_over_high;
+    
+    /* Used by memcontrol for targeted memcg charge: */
+    // 由内存控制用于目标 memcg 充电
+    struct mem_cgroup *active_memcg;
+    
+    /* Cache for current->cgroups->memcg->objcg lookups: */
+    // 当前->cgroups->memcg->objcg 查找的缓存
+    struct obj_cgroup *objcg;
 #endif
 
 #ifdef CONFIG_BLK_CGROUP
-	struct gendisk			*throttle_disk;
+    struct gendisk *throttle_disk; // 节流磁盘
 #endif
 
 #ifdef CONFIG_UPROBES
-	struct uprobe_task		*utask;
+    struct uprobe_task *utask; // uprobe 任务
 #endif
 #if defined(CONFIG_BCACHE) || defined(CONFIG_BCACHE_MODULE)
-	unsigned int			sequential_io;
-	unsigned int			sequential_io_avg;
+    unsigned int sequential_io; // 顺序 IO
+    unsigned int sequential_io_avg; // 顺序 IO 平均值
 #endif
-	struct kmap_ctrl		kmap_ctrl;
+    struct kmap_ctrl kmap_ctrl; // kmap 控制
 #ifdef CONFIG_DEBUG_ATOMIC_SLEEP
-	unsigned long			task_state_change;
+    unsigned long task_state_change; // 任务状态变化
 # ifdef CONFIG_PREEMPT_RT
-	unsigned long			saved_state_change;
+    unsigned long saved_state_change; // 保存的状态变化
 # endif
 #endif
-	struct rcu_head			rcu;
-	refcount_t			rcu_users;
-	int				pagefault_disabled;
+    struct rcu_head rcu; // RCU 头
+    refcount_t rcu_users; // RCU 用户计数
+    int pagefault_disabled; // 页面错误禁用
 #ifdef CONFIG_MMU
-	struct task_struct		*oom_reaper_list;
-	struct timer_list		oom_reaper_timer;
+    struct task_struct *oom_reaper_list; // OOM 收割者列表
+    struct timer_list oom_reaper_timer; // OOM 收割者定时器
 #endif
 #ifdef CONFIG_VMAP_STACK
-	struct vm_struct		*stack_vm_area;
+    struct vm_struct *stack_vm_area; // 堆栈虚拟内存区域
 #endif
 #ifdef CONFIG_THREAD_INFO_IN_TASK
-	/* A live task holds one reference: */
-	refcount_t			stack_refcount;
+    /* A live task holds one reference: */
+    // 活动任务持有一个引用
+    refcount_t stack_refcount;
 #endif
 #ifdef CONFIG_LIVEPATCH
-	int patch_state;
+    int patch_state; // 补丁状态
 #endif
 #ifdef CONFIG_SECURITY
-	/* Used by LSM modules for access restriction: */
-	void				*security;
+    /* Used by LSM modules for access restriction: */
+    // 由 LSM 模块用于访问限制
+    void *security;
 #endif
 #ifdef CONFIG_BPF_SYSCALL
-	/* Used by BPF task local storage */
-	struct bpf_local_storage __rcu	*bpf_storage;
-	/* Used for BPF run context */
-	struct bpf_run_ctx		*bpf_ctx;
+    /* Used by BPF task local storage */
+    // 由 BPF 任务本地存储使用
+    struct bpf_local_storage __rcu *bpf_storage;
+    /* Used for BPF run context */
+    // 用于 BPF 运行上下文
+    struct bpf_run_ctx *bpf_ctx;
 #endif
-	/* Used by BPF for per-TASK xdp storage */
-	struct bpf_net_context		*bpf_net_context;
-
+    /* Used by BPF for per-TASK xdp storage */
+    // 由 BPF 用于每个任务的 XDP 存储
+    struct bpf_net_context *bpf_net_context;
+    
 #ifdef CONFIG_GCC_PLUGIN_STACKLEAK
-	unsigned long			lowest_stack;
-	unsigned long			prev_lowest_stack;
+    unsigned long lowest_stack; // 最低堆栈
+    unsigned long prev_lowest_stack; // 之前的最低堆栈
 #endif
 
 #ifdef CONFIG_X86_MCE
-	void __user			*mce_vaddr;
-	__u64				mce_kflags;
-	u64				mce_addr;
-	__u64				mce_ripv : 1,
-					mce_whole_page : 1,
-					__mce_reserved : 62;
-	struct callback_head		mce_kill_me;
-	int				mce_count;
+    void __user *mce_vaddr; // MCE 虚拟地址
+    __u64 mce_kflags; // MCE 内核标志
+    u64 mce_addr; // MCE 地址
+    __u64 mce_ripv : 1, // MCE RIPV
+    					mce_whole_page : 1,
+    					__mce_reserved : 62;
+    	struct callback_head		mce_kill_me;
+    	int				mce_count;
 #endif
 
 #ifdef CONFIG_KRETPROBES
-	struct llist_head               kretprobe_instances;
+    struct llist_head               kretprobe_instances; // kretprobe 实例
 #endif
 #ifdef CONFIG_RETHOOK
-	struct llist_head               rethooks;
+    struct llist_head               rethooks; // rethook 实例
 #endif
 
 #ifdef CONFIG_ARCH_HAS_PARANOID_L1D_FLUSH
-	/*
-	 * If L1D flush is supported on mm context switch
-	 * then we use this callback head to queue kill work
-	 * to kill tasks that are not running on SMT disabled
-	 * cores
-	 */
-	struct callback_head		l1d_flush_kill;
+    /*
+     * If L1D flush is supported on mm context switch
+     * then we use this callback head to queue kill work
+     * to kill tasks that are not running on SMT disabled
+     * cores
+     */
+    // 如果在 mm 上下文切换时支持 L1D 刷新，那么我们使用这个回调头来排队杀死那些没有在禁用 SMT 的核心上运行的任务
+    struct callback_head		l1d_flush_kill;
 #endif
 
 #ifdef CONFIG_RV
-	/*
-	 * Per-task RV monitor. Nowadays fixed in RV_PER_TASK_MONITORS.
-	 * If we find justification for more monitors, we can think
-	 * about adding more or developing a dynamic method. So far,
-	 * none of these are justified.
-	 */
-	union rv_task_monitor		rv[RV_PER_TASK_MONITORS];
+    /*
+     * Per-task RV monitor. Nowadays fixed in RV_PER_TASK_MONITORS.
+     * If we find justification for more monitors, we can think
+     * about adding more or developing a dynamic method. So far,
+     * none of these are justified.
+     */
+    // 每个任务的 RV 监视器。如今固定在 RV_PER_TASK_MONITORS 中。
+    // 如果我们找到更多监视器的理由，我们可以考虑添加更多或开发一种动态方法。到目前为止，这些都没有理由。
+    union rv_task_monitor		rv[RV_PER_TASK_MONITORS];
 #endif
 
 #ifdef CONFIG_USER_EVENTS
-	struct user_event_mm		*user_event_mm;
+    struct user_event_mm		*user_event_mm; // 用户事件内存管理
 #endif
 
-	/*
-	 * New fields for task_struct should be added above here, so that
-	 * they are included in the randomized portion of task_struct.
-	 */
-	randomized_struct_fields_end
+    /*
+     * New fields for task_struct should be added above here, so that
+     * they are included in the randomized portion of task_struct.
+     */
+    // task_struct 的新字段应添加在此处上方，以便它们包含在 task_struct 的随机化部分中。
+    randomized_struct_fields_end
 
-	/* CPU-specific state of this task: */
-	struct thread_struct		thread;
+    /* CPU-specific state of this task: */
+    // 此任务的特定 CPU 状态
+    struct thread_struct		thread;
 
-	/*
-	 * WARNING: on x86, 'thread_struct' contains a variable-sized
-	 * structure.  It *MUST* be at the end of 'task_struct'.
-	 *
-	 * Do not put anything below here!
-	 */
+    /*
+     * WARNING: on x86, 'thread_struct' contains a variable-sized
+     * structure.  It *MUST* be at the end of 'task_struct'.
+     *
+     * Do not put anything below here!
+     */
+    // 警告：在 x86 上，'thread_struct' 包含一个可变大小的结构。它必须位于 'task_struct' 的末尾。
+    // 不要在此处下面放置任何内容！
 };
 
 #define TASK_REPORT_IDLE	(TASK_REPORT + 1)
