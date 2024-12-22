@@ -572,23 +572,48 @@ int account_locked_vm(struct mm_struct *mm, unsigned long pages, bool inc)
 }
 EXPORT_SYMBOL_GPL(account_locked_vm);
 
+/*
+ * 执行内存映射操作的核心函数
+ *
+ * 参数:
+ * @file: 要映射的文件(如果是匿名映射则为NULL)
+ * @addr: 映射的起始地址(如果为0则由内核选择)
+ * @len: 映射的长度(字节)
+ * @prot: 内存保护标志(PROT_READ/PROT_WRITE等)
+ * @flag: 映射标志(MAP_SHARED/MAP_PRIVATE等)
+ * @pgoff: 文件映射的页偏移量
+ *
+ * 返回值:
+ * 成功时返回映射区域的起始地址
+ * 失败时返回负的错误码
+ */
 unsigned long vm_mmap_pgoff(struct file *file, unsigned long addr,
 	unsigned long len, unsigned long prot,
 	unsigned long flag, unsigned long pgoff)
 {
 	unsigned long ret;
-	struct mm_struct *mm = current->mm;
-	unsigned long populate;
-	LIST_HEAD(uf);
+	struct mm_struct *mm = current->mm;  /* 获取当前进程的内存描述符 */
+	unsigned long populate;              /* 用于记录需要立即分配的页面数 */
+	LIST_HEAD(uf);                      /* 用于userfaultfd的未映射列表 */
 
+	/* 进行安全检查 */
 	ret = security_mmap_file(file, prot, flag);
 	if (!ret) {
+		/* 获取mm的写锁,可被信号打断 */
 		if (mmap_write_lock_killable(mm))
 			return -EINTR;
+
+		/* 执行实际的映射操作 */
 		ret = do_mmap(file, addr, len, prot, flag, 0, pgoff, &populate,
 			      &uf);
+
+		/* 释放mm的写锁 */
 		mmap_write_unlock(mm);
+
+		/* 完成userfaultfd相关的未映射处理 */
 		userfaultfd_unmap_complete(mm, &uf);
+
+		/* 如果需要,立即分配物理页面 */
 		if (populate)
 			mm_populate(ret, populate);
 	}

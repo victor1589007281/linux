@@ -278,7 +278,27 @@ static inline bool file_mmap_ok(struct file *file, struct inode *inode,
 }
 
 /*
- * The caller must write-lock current->mm->mmap_lock.
+ * 执行内存映射的底层实现函数
+ *
+ * 参数:
+ * @file: 要映射的文件(如果是匿名映射则为NULL)
+ * @addr: 映射的起始地址(如果为0则由内核选择)
+ * @len: 映射的长度(字节)
+ * @prot: 内存保护标志(PROT_READ/PROT_WRITE/PROT_EXEC等)
+ * @flags: 映射标志(MAP_SHARED/MAP_PRIVATE等)
+ * @vm_flags: VMA的标志位
+ * @pgoff: 文件映射的页偏移量
+ * @populate: 返回需要立即分配的页面数
+ * @uf: userfaultfd的未映射列表
+ *
+ * 返回值:
+ * 成功时返回映射区域的起始地址
+ * 失败时返回负的错误码
+ *
+ * 说明:
+ * 1. 调用此函数前必须持有 mm->mmap_lock 写锁
+ * 2. 函数会处理地址对齐、权限检查、文件映射等细节
+ * 3. 会创建或修改VMA(虚拟内存区域)结构
  */
 unsigned long do_mmap(struct file *file, unsigned long addr,
 			unsigned long len, unsigned long prot,
@@ -286,43 +306,43 @@ unsigned long do_mmap(struct file *file, unsigned long addr,
 			unsigned long pgoff, unsigned long *populate,
 			struct list_head *uf)
 {
-	struct mm_struct *mm = current->mm;
-	int pkey = 0;
+    struct mm_struct *mm = current->mm;
+    int pkey = 0;
 
-	*populate = 0;
+    *populate = 0;  /* 初始化需要立即分配的页面数为0 */
 
-	if (!len)
-		return -EINVAL;
+    /* 检查长度是否有效 */
+    if (!len)
+        return -EINVAL;
 
-	/*
-	 * Does the application expect PROT_READ to imply PROT_EXEC?
-	 *
-	 * (the exception is when the underlying filesystem is noexec
-	 *  mounted, in which case we don't add PROT_EXEC.)
-	 */
-	if ((prot & PROT_READ) && (current->personality & READ_IMPLIES_EXEC))
-		if (!(file && path_noexec(&file->f_path)))
-			prot |= PROT_EXEC;
+    /*
+     * 检查是否需要将PROT_READ隐含PROT_EXEC
+     * (除非文件系统挂载时指定了noexec)
+     */
+    if ((prot & PROT_READ) && (current->personality & READ_IMPLIES_EXEC))
+        if (!(file && path_noexec(&file->f_path)))
+            prot |= PROT_EXEC;
 
-	/* force arch specific MAP_FIXED handling in get_unmapped_area */
-	if (flags & MAP_FIXED_NOREPLACE)
-		flags |= MAP_FIXED;
+    /* 强制特定架构处理MAP_FIXED标志 */
+    if (flags & MAP_FIXED_NOREPLACE)
+        flags |= MAP_FIXED;
 
-	if (!(flags & MAP_FIXED))
-		addr = round_hint_to_min(addr);
+    /* 如果不是固定映射,对地址进行对齐处理 */
+    if (!(flags & MAP_FIXED))
+        addr = round_hint_to_min(addr);
 
-	/* Careful about overflows.. */
-	len = PAGE_ALIGN(len);
-	if (!len)
-		return -ENOMEM;
+    /* 检查长度溢出 */
+    len = PAGE_ALIGN(len);
+    if (!len)
+        return -ENOMEM;
 
-	/* offset overflow? */
-	if ((pgoff + (len >> PAGE_SHIFT)) < pgoff)
-		return -EOVERFLOW;
+    /* 检查偏移量是否溢出 */
+    if ((pgoff + (len >> PAGE_SHIFT)) < pgoff)
+        return -EOVERFLOW;
 
-	/* Too many mappings? */
-	if (mm->map_count > sysctl_max_map_count)
-		return -ENOMEM;
+    /* 检查进程的映射数量是否超过限制 */
+    if (mm->map_count > sysctl_max_map_count)
+        return -ENOMEM;
 
 	/*
 	 * addr is returned from get_unmapped_area,
@@ -340,57 +360,56 @@ unsigned long do_mmap(struct file *file, unsigned long addr,
 			pkey = 0;
 	}
 
-	/* Do simple checking here so the lower-level routines won't have
-	 * to. we assume access permissions have been handled by the open
-	 * of the memory object, so we don't do any here.
-	 */
-	vm_flags |= calc_vm_prot_bits(prot, pkey) | calc_vm_flag_bits(flags) |
-			mm->def_flags | VM_MAYREAD | VM_MAYWRITE | VM_MAYEXEC;
+	/* 计算VMA的访问权限标志 */
+	vm_flags |= calc_vm_prot_bits(prot, pkey) | 
+	            calc_vm_flag_bits(flags) |
+	            mm->def_flags | VM_MAYREAD | VM_MAYWRITE | VM_MAYEXEC;
 
-	/* Obtain the address to map to. we verify (or select) it and ensure
-	 * that it represents a valid section of the address space.
-	 */
+	/* 获取映射的地址 */
 	addr = __get_unmapped_area(file, addr, len, pgoff, flags, vm_flags);
 	if (IS_ERR_VALUE(addr))
 		return addr;
 
+	/* 如果指定了MAP_FIXED_NOREPLACE,检查地址区间是否已被占用 */
 	if (flags & MAP_FIXED_NOREPLACE) {
 		if (find_vma_intersection(mm, addr, addr + len))
 			return -EEXIST;
 	}
 
-	if (flags & MAP_LOCKED)
+	/* 检查是否允许锁定内存 */
+	if (flags & MAP_LOCKED) {
 		if (!can_do_mlock())
 			return -EPERM;
+	}
 
+	/* 检查内存锁定限制 */
 	if (!mlock_future_ok(mm, vm_flags, len))
 		return -EAGAIN;
 
+	/* 如果是文件映射,进行额外的检查 */
 	if (file) {
 		struct inode *inode = file_inode(file);
 		unsigned long flags_mask;
 
+		/* 检查文件大小限制 */
 		if (!file_mmap_ok(file, inode, pgoff, len))
 			return -EOVERFLOW;
 
+		/* 处理MAP_SHARED相关标志 */
 		flags_mask = LEGACY_MAP_MASK;
 		if (file->f_op->fop_flags & FOP_MMAP_SYNC)
 			flags_mask |= MAP_SYNC;
 
 		switch (flags & MAP_TYPE) {
 		case MAP_SHARED:
-			/*
-			 * Force use of MAP_SHARED_VALIDATE with non-legacy
-			 * flags. E.g. MAP_SYNC is dangerous to use with
-			 * MAP_SHARED as you don't know which consistency model
-			 * you will get. We silently ignore unsupported flags
-			 * with MAP_SHARED to preserve backward compatibility.
-			 */
+			/* 强制对非传统标志使用MAP_SHARED_VALIDATE */
 			flags &= LEGACY_MAP_MASK;
 			fallthrough;
 		case MAP_SHARED_VALIDATE:
+			/* 检查标志的有效性 */
 			if (flags & ~flags_mask)
 				return -EOPNOTSUPP;
+			/* 检查写权限 */
 			if (prot & PROT_WRITE) {
 				if (!(file->f_mode & FMODE_WRITE))
 					return -EACCES;
@@ -493,64 +512,96 @@ unsigned long do_mmap(struct file *file, unsigned long addr,
 			vm_flags |= VM_NORESERVE;
 	}
 
+	/* 执行实际的映射操作 */
 	addr = mmap_region(file, addr, len, vm_flags, pgoff, uf);
 	if (!IS_ERR_VALUE(addr) &&
 	    ((vm_flags & VM_LOCKED) ||
 	     (flags & (MAP_POPULATE | MAP_NONBLOCK)) == MAP_POPULATE))
 		*populate = len;
+
 	return addr;
 }
 
+/*
+ * 内核系统调用mmap的实现函数
+ * 
+ * 参数:
+ * @addr: 映射的起始地址,如果为0则由内核选择合适的地址
+ * @len: 映射的长度(字节)
+ * @prot: 内存保护标志(PROT_READ/PROT_WRITE/PROT_EXEC等)
+ * @flags: 映射标志(MAP_SHARED/MAP_PRIVATE/MAP_ANONYMOUS等)
+ * @fd: 要映射的文件描述符
+ * @pgoff: 文件映射的页偏移量
+ *
+ * 返回值:
+ * 成功时返回映射区域的起始地址
+ * 失败时返回负的错误码
+ */
 unsigned long ksys_mmap_pgoff(unsigned long addr, unsigned long len,
 			      unsigned long prot, unsigned long flags,
 			      unsigned long fd, unsigned long pgoff)
 {
-	struct file *file = NULL;
-	unsigned long retval;
+    struct file *file = NULL;
+    unsigned long retval;
 
-	if (!(flags & MAP_ANONYMOUS)) {
-		audit_mmap_fd(fd, flags);
-		file = fget(fd);
-		if (!file)
-			return -EBADF;
-		if (is_file_hugepages(file)) {
-			len = ALIGN(len, huge_page_size(hstate_file(file)));
-		} else if (unlikely(flags & MAP_HUGETLB)) {
-			retval = -EINVAL;
-			goto out_fput;
-		}
-	} else if (flags & MAP_HUGETLB) {
-		struct hstate *hs;
+    /* 如果不是匿名映射(MAP_ANONYMOUS未设置) */
+    if (!(flags & MAP_ANONYMOUS)) {
+        /* 记录mmap的文件描述符到审计日志 */
+        audit_mmap_fd(fd, flags);
+        /* 获取文件描述符对应的file结构 */
+        file = fget(fd);
+        if (!file)
+            return -EBADF;  /* 无效的文件描述符 */
+            
+        /* 如果是大页文件,按大页大小对齐长度 */
+        if (is_file_hugepages(file)) {
+            len = ALIGN(len, huge_page_size(hstate_file(file)));
+        } else if (unlikely(flags & MAP_HUGETLB)) {
+            /* 非大页文件不能使用MAP_HUGETLB标志 */
+            retval = -EINVAL;
+            goto out_fput;
+        }
+    } 
+    /* 如果是匿名映射且使用大页 */ 
+    else if (flags & MAP_HUGETLB) {
+        struct hstate *hs;
 
-		hs = hstate_sizelog((flags >> MAP_HUGE_SHIFT) & MAP_HUGE_MASK);
-		if (!hs)
-			return -EINVAL;
+        /* 获取大页状态 */
+        hs = hstate_sizelog((flags >> MAP_HUGE_SHIFT) & MAP_HUGE_MASK);
+        if (!hs)
+            return -EINVAL;
 
-		len = ALIGN(len, huge_page_size(hs));
-		/*
-		 * VM_NORESERVE is used because the reservations will be
-		 * taken when vm_ops->mmap() is called
-		 */
-		file = hugetlb_file_setup(HUGETLB_ANON_FILE, len,
-				VM_NORESERVE,
-				HUGETLB_ANONHUGE_INODE,
-				(flags >> MAP_HUGE_SHIFT) & MAP_HUGE_MASK);
-		if (IS_ERR(file))
-			return PTR_ERR(file);
-	}
+        /* 按大页大小对齐长度 */
+        len = ALIGN(len, huge_page_size(hs));
+        
+        /* 创建匿名大页文件 */
+        file = hugetlb_file_setup(HUGETLB_ANON_FILE, len,
+                VM_NORESERVE,  /* 延迟预留空间到实际使用时 */
+                HUGETLB_ANONHUGE_INODE,
+                (flags >> MAP_HUGE_SHIFT) & MAP_HUGE_MASK);
+        if (IS_ERR(file))
+            return PTR_ERR(file);
+    }
 
-	retval = vm_mmap_pgoff(file, addr, len, prot, flags, pgoff);
+    /* 调用底层mmap实现 */
+    retval = vm_mmap_pgoff(file, addr, len, prot, flags, pgoff);
 out_fput:
-	if (file)
-		fput(file);
-	return retval;
+    if (file)
+        fput(file);  /* 释放文件引用 */
+    return retval;
 }
 
+/*
+ * mmap系统调用的入口函数
+ * 
+ * 这是一个包装函数,直接调用ksys_mmap_pgoff()来完成实际的映射操作
+ * 参数含义同ksys_mmap_pgoff()
+ */
 SYSCALL_DEFINE6(mmap_pgoff, unsigned long, addr, unsigned long, len,
 		unsigned long, prot, unsigned long, flags,
 		unsigned long, fd, unsigned long, pgoff)
 {
-	return ksys_mmap_pgoff(addr, len, prot, flags, fd, pgoff);
+    return ksys_mmap_pgoff(addr, len, prot, flags, fd, pgoff);
 }
 
 #ifdef __ARCH_WANT_SYS_OLD_MMAP
