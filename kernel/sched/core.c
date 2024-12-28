@@ -5581,51 +5581,53 @@ static inline u64 cpu_resched_latency(struct rq *rq) { return 0; }
  * This function gets called by the timer code, with HZ frequency.
  * We call it with interrupts disabled.
  */
+// 这个函数由定时器代码调用，频率为 HZ。
+// 我们在禁用中断的情况下调用它。
 void sched_tick(void)
 {
-	int cpu = smp_processor_id();
-	struct rq *rq = cpu_rq(cpu);
-	struct task_struct *curr;
-	struct rq_flags rf;
-	unsigned long hw_pressure;
-	u64 resched_latency;
+    int cpu = smp_processor_id(); // 获取当前 CPU 的 ID
+    struct rq *rq = cpu_rq(cpu); // 获取当前 CPU 的运行队列
+    struct task_struct *curr; // 当前任务
+    struct rq_flags rf; // 运行队列标志
+    unsigned long hw_pressure; // 硬件压力
+    u64 resched_latency; // 重新调度延迟
 
-	if (housekeeping_cpu(cpu, HK_TYPE_TICK))
-		arch_scale_freq_tick();
+    if (housekeeping_cpu(cpu, HK_TYPE_TICK))
+        arch_scale_freq_tick(); // 调整频率滴答
 
-	sched_clock_tick();
+    sched_clock_tick(); // 调度时钟滴答
 
-	rq_lock(rq, &rf);
+    rq_lock(rq, &rf); // 锁定运行队列
 
-	curr = rq->curr;
-	psi_account_irqtime(rq, curr, NULL);
+    curr = rq->curr; // 获取当前运行的任务
+    psi_account_irqtime(rq, curr, NULL); // 记录中断时间
 
-	update_rq_clock(rq);
-	hw_pressure = arch_scale_hw_pressure(cpu_of(rq));
-	update_hw_load_avg(rq_clock_task(rq), rq, hw_pressure);
-	curr->sched_class->task_tick(rq, curr, 0);
-	if (sched_feat(LATENCY_WARN))
-		resched_latency = cpu_resched_latency(rq);
-	calc_global_load_tick(rq);
-	sched_core_tick(rq);
-	task_tick_mm_cid(rq, curr);
-	scx_tick(rq);
+    update_rq_clock(rq); // 更新运行队列时钟
+    hw_pressure = arch_scale_hw_pressure(cpu_of(rq)); // 获取硬件压力
+    update_hw_load_avg(rq_clock_task(rq), rq, hw_pressure); // 更新硬件负载平均值
+    curr->sched_class->task_tick(rq, curr, 0); // 调用当前任务的调度类的 task_tick 函数
+    if (sched_feat(LATENCY_WARN))
+        resched_latency = cpu_resched_latency(rq); // 获取重新调度延迟
+    calc_global_load_tick(rq); // 计算全局负载滴答
+    sched_core_tick(rq); // 调度核心滴答
+    task_tick_mm_cid(rq, curr); // 任务滴答
+    scx_tick(rq); // 扩展调度滴答
 
-	rq_unlock(rq, &rf);
+    rq_unlock(rq, &rf); // 解锁运行队列
 
-	if (sched_feat(LATENCY_WARN) && resched_latency)
-		resched_latency_warn(cpu, resched_latency);
+    if (sched_feat(LATENCY_WARN) && resched_latency)
+        resched_latency_warn(cpu, resched_latency); // 重新调度延迟警告
 
-	perf_event_task_tick();
+    perf_event_task_tick(); // 性能事件任务滴答
 
-	if (curr->flags & PF_WQ_WORKER)
-		wq_worker_tick(curr);
+    if (curr->flags & PF_WQ_WORKER)
+        wq_worker_tick(curr); // 工作队列工作者滴答
 
 #ifdef CONFIG_SMP
-	if (!scx_switched_all()) {
-		rq->idle_balance = idle_cpu(cpu);
-		sched_balance_trigger(rq);
-	}
+    if (!scx_switched_all()) {
+        rq->idle_balance = idle_cpu(cpu); // 空闲平衡
+        sched_balance_trigger(rq); // 调度平衡触发
+    }
 #endif
 }
 

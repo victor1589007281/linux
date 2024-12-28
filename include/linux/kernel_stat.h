@@ -17,24 +17,24 @@
  */
 
 enum cpu_usage_stat {
-	CPUTIME_USER,
-	CPUTIME_NICE,
-	CPUTIME_SYSTEM,
-	CPUTIME_SOFTIRQ,
-	CPUTIME_IRQ,
-	CPUTIME_IDLE,
-	CPUTIME_IOWAIT,
-	CPUTIME_STEAL,
-	CPUTIME_GUEST,
-	CPUTIME_GUEST_NICE,
+    CPUTIME_USER,        // 用户态 CPU 时间
+    CPUTIME_NICE,        // 低优先级用户态 CPU 时间
+    CPUTIME_SYSTEM,      // 内核态 CPU 时间
+    CPUTIME_SOFTIRQ,     // 软中断 CPU 时间
+    CPUTIME_IRQ,         // 硬中断 CPU 时间
+    CPUTIME_IDLE,        // 空闲 CPU 时间
+    CPUTIME_IOWAIT,      // IO 等待 CPU 时间
+    CPUTIME_STEAL,       // 被窃取的 CPU 时间
+    CPUTIME_GUEST,       // 客户机虚拟机的 CPU 时间
+    CPUTIME_GUEST_NICE,  // 低优先级客户机虚拟机的 CPU 时间
 #ifdef CONFIG_SCHED_CORE
-	CPUTIME_FORCEIDLE,
+    CPUTIME_FORCEIDLE,   // 强制空闲 CPU 时间
 #endif
-	NR_STATS,
+    NR_STATS,            // CPU 统计项的数量
 };
 
 struct kernel_cpustat {
-	u64 cpustat[NR_STATS];
+    u64 cpustat[NR_STATS]; // 每个 CPU 统计项的计数
 };
 
 struct kernel_stat {

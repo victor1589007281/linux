@@ -1981,9 +1981,13 @@ extern int task_prio(const struct task_struct *p);
  *
  * Return: The nice value [ -20 ... 0 ... 19 ].
  */
+// task_nice - 返回给定任务的 nice 值。
+// @p: 相关任务。
+//
+// 返回值：nice 值 [ -20 ... 0 ... 19 ]。
 static inline int task_nice(const struct task_struct *p)
 {
-	return PRIO_TO_NICE((p)->static_prio);
+    return PRIO_TO_NICE((p)->static_prio); // 将静态优先级转换为 nice 值
 }
 
 extern int can_nice(const struct task_struct *p, const int nice);

@@ -2509,21 +2509,24 @@ static void run_local_timers(void)
  * Called from the timer interrupt handler to charge one tick to the current
  * process.  user_tick is 1 if the tick is user time, 0 for system.
  */
+// 从定时器中断处理程序调用，将一个滴答计入当前进程。
+// 如果滴答是用户时间，则 user_tick 为 1；如果是系统时间，则为 0。
 void update_process_times(int user_tick)
 {
-	struct task_struct *p = current;
+    struct task_struct *p = current; // 获取当前任务
 
-	/* Note: this timer irq context must be accounted for as well. */
-	account_process_tick(p, user_tick);
-	run_local_timers();
-	rcu_sched_clock_irq(user_tick);
+    /* Note: this timer irq context must be accounted for as well. */
+    // 注意：这个定时器中断上下文也必须被计入。
+    account_process_tick(p, user_tick); // 记录当前任务的滴答
+    run_local_timers(); // 运行本地定时器
+    rcu_sched_clock_irq(user_tick); // 调度 RCU 时钟中断
 #ifdef CONFIG_IRQ_WORK
-	if (in_irq())
-		irq_work_tick();
+    if (in_irq())
+        irq_work_tick(); // 处理中断工作滴答
 #endif
-	sched_tick();
-	if (IS_ENABLED(CONFIG_POSIX_TIMERS))
-		run_posix_cpu_timers();
+    sched_tick(); // 调度滴答
+    if (IS_ENABLED(CONFIG_POSIX_TIMERS))
+        run_posix_cpu_timers(); // 运行 POSIX CPU 定时器
 }
 
 /*

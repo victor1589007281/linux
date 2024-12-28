@@ -100,17 +100,18 @@ static u64 irqtime_tick_accounted(u64 dummy)
 #endif /* !CONFIG_IRQ_TIME_ACCOUNTING */
 
 static inline void task_group_account_field(struct task_struct *p, int index,
-					    u64 tmp)
+                        u64 tmp)
 {
-	/*
-	 * Since all updates are sure to touch the root cgroup, we
-	 * get ourselves ahead and touch it first. If the root cgroup
-	 * is the only cgroup, then nothing else should be necessary.
-	 *
-	 */
-	__this_cpu_add(kernel_cpustat.cpustat[index], tmp);
+    /*
+     * Since all updates are sure to touch the root cgroup, we
+     * get ourselves ahead and touch it first. If the root cgroup
+     * is the only cgroup, then nothing else should be necessary.
+     */
+    // 由于所有更新都肯定会触及根 cgroup，我们提前触及它。
+    // 如果根 cgroup 是唯一的 cgroup，那么不需要其他操作。
+    __this_cpu_add(kernel_cpustat.cpustat[index], tmp); // 将时间添加到当前 CPU 的统计数据中
 
-	cgroup_account_cputime_field(p, index, tmp);
+    cgroup_account_cputime_field(p, index, tmp); // 将时间添加到 cgroup 的统计数据中
 }
 
 /*
@@ -118,21 +119,27 @@ static inline void task_group_account_field(struct task_struct *p, int index,
  * @p: the process that the CPU time gets accounted to
  * @cputime: the CPU time spent in user space since the last update
  */
+// 将用户 CPU 时间记录到进程中。
+// @p: 记录 CPU 时间的进程
+// @cputime: 自上次更新以来在用户空间中花费的 CPU 时间
 void account_user_time(struct task_struct *p, u64 cputime)
 {
-	int index;
+    int index;
 
-	/* Add user time to process. */
-	p->utime += cputime;
-	account_group_user_time(p, cputime);
+    /* Add user time to process. */
+    // 将用户时间添加到进程中
+    p->utime += cputime;
+    account_group_user_time(p, cputime); // 记录组用户时间
 
-	index = (task_nice(p) > 0) ? CPUTIME_NICE : CPUTIME_USER;
+    index = (task_nice(p) > 0) ? CPUTIME_NICE : CPUTIME_USER;
 
-	/* Add user time to cpustat. */
-	task_group_account_field(p, index, cputime);
+    /* Add user time to cpustat. */
+    // 将用户时间添加到 cpustat 中
+    task_group_account_field(p, index, cputime);
 
-	/* Account for user time used */
-	acct_account_cputime(p);
+    /* Account for user time used */
+    // 记录使用的用户时间
+    acct_account_cputime(p);
 }
 
 /*
@@ -185,23 +192,30 @@ void account_system_index_time(struct task_struct *p,
  * @hardirq_offset: the offset to subtract from hardirq_count()
  * @cputime: the CPU time spent in kernel space since the last update
  */
+// 将系统 CPU 时间记录到进程中。
+// @p: 记录 CPU 时间的进程
+// @hardirq_offset: 从 hardirq_count() 中减去的偏移量
+// @cputime: 自上次更新以来在内核空间中花费的 CPU 时间
 void account_system_time(struct task_struct *p, int hardirq_offset, u64 cputime)
 {
-	int index;
+    int index;
 
-	if ((p->flags & PF_VCPU) && (irq_count() - hardirq_offset == 0)) {
-		account_guest_time(p, cputime);
-		return;
-	}
+    // 如果进程是虚拟 CPU 并且没有中断，则记录客户机时间
+	// 虚拟CPU：是指多个VM共享CPU资源，通过时间片轮转的方式，实现多个VM之间的CPU资源共享。
+    if ((p->flags & PF_VCPU) && (irq_count() - hardirq_offset == 0)) {
+        account_guest_time(p, cputime);
+        return;
+    }
 
-	if (hardirq_count() - hardirq_offset)
-		index = CPUTIME_IRQ;
-	else if (in_serving_softirq())
-		index = CPUTIME_SOFTIRQ;
-	else
-		index = CPUTIME_SYSTEM;
+    // 根据中断类型选择相应的 CPU 时间统计项
+    if (hardirq_count() - hardirq_offset)
+        index = CPUTIME_IRQ; // 硬中断 CPU 时间
+    else if (in_serving_softirq())
+        index = CPUTIME_SOFTIRQ; // 软中断 CPU 时间
+    else
+        index = CPUTIME_SYSTEM; // 系统 CPU 时间
 
-	account_system_index_time(p, cputime, index);
+    account_system_index_time(p, cputime, index); // 记录系统 CPU 时间
 }
 
 /*
@@ -219,15 +233,19 @@ void account_steal_time(u64 cputime)
  * Account for idle time.
  * @cputime: the CPU time spent in idle wait
  */
+// 记录空闲时间。
+// @cputime: 在空闲等待中花费的 CPU 时间
 void account_idle_time(u64 cputime)
 {
-	u64 *cpustat = kcpustat_this_cpu->cpustat;
-	struct rq *rq = this_rq();
+    u64 *cpustat = kcpustat_this_cpu->cpustat; // 获取当前 CPU 的统计数据
+    struct rq *rq = this_rq(); // 获取当前 CPU 的运行队列
 
-	if (atomic_read(&rq->nr_iowait) > 0)
-		cpustat[CPUTIME_IOWAIT] += cputime;
-	else
-		cpustat[CPUTIME_IDLE] += cputime;
+    // 如果有 IO 等待任务，则记录 IO 等待时间
+    if (atomic_read(&rq->nr_iowait) > 0)
+        cpustat[CPUTIME_IOWAIT] += cputime;
+    else
+        // 否则记录空闲时间
+        cpustat[CPUTIME_IDLE] += cputime;
 }
 
 
@@ -471,32 +489,35 @@ void thread_group_cputime_adjusted(struct task_struct *p, u64 *ut, u64 *st)
  * @p: the process that the CPU time gets accounted to
  * @user_tick: indicates if the tick is a user or a system tick
  */
+// 记录一个 CPU 时间滴答。
+// @p: 记录 CPU 时间的进程
+// @user_tick: 指示滴答是用户时间还是系统时间
 void account_process_tick(struct task_struct *p, int user_tick)
 {
-	u64 cputime, steal;
+    u64 cputime, steal;
 
-	if (vtime_accounting_enabled_this_cpu())
-		return;
+    if (vtime_accounting_enabled_this_cpu())
+        return;
 
-	if (sched_clock_irqtime) {
-		irqtime_account_process_tick(p, user_tick, 1);
-		return;
-	}
+    if (sched_clock_irqtime) {
+        irqtime_account_process_tick(p, user_tick, 1);
+        return;
+    }
 
-	cputime = TICK_NSEC;
-	steal = steal_account_process_time(ULONG_MAX);
+    cputime = TICK_NSEC; // 一个滴答的纳秒数
+    steal = steal_account_process_time(ULONG_MAX); // 计算被窃取的时间
 
-	if (steal >= cputime)
-		return;
+    if (steal >= cputime)
+        return;
 
-	cputime -= steal;
+    cputime -= steal; // 减去被窃取的时间
 
-	if (user_tick)
-		account_user_time(p, cputime);
-	else if ((p != this_rq()->idle) || (irq_count() != HARDIRQ_OFFSET))
-		account_system_time(p, HARDIRQ_OFFSET, cputime);
-	else
-		account_idle_time(cputime);
+    if (user_tick)
+        account_user_time(p, cputime); // 记录用户时间
+    else if ((p != this_rq()->idle) || (irq_count() != HARDIRQ_OFFSET))
+        account_system_time(p, HARDIRQ_OFFSET, cputime); // 记录系统时间
+    else
+        account_idle_time(cputime); // 记录空闲时间
 }
 
 /*

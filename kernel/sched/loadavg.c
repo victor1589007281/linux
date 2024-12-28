@@ -77,17 +77,17 @@ void get_avenrun(unsigned long *loads, unsigned long offset, int shift)
 
 long calc_load_fold_active(struct rq *this_rq, long adjust)
 {
-	long nr_active, delta = 0;
+    long nr_active, delta = 0;
 
-	nr_active = this_rq->nr_running - adjust;
-	nr_active += (int)this_rq->nr_uninterruptible;
+    nr_active = this_rq->nr_running - adjust; // 计算正在运行的任务数，减去调整值
+    nr_active += (int)this_rq->nr_uninterruptible; // 加上不可中断的任务数
 
-	if (nr_active != this_rq->calc_load_active) {
-		delta = nr_active - this_rq->calc_load_active;
-		this_rq->calc_load_active = nr_active;
-	}
+    if (nr_active != this_rq->calc_load_active) {
+        delta = nr_active - this_rq->calc_load_active; // 计算活动任务数的变化量
+        this_rq->calc_load_active = nr_active; // 更新活动任务数
+    }
 
-	return delta;
+    return delta; // 返回变化量
 }
 
 /**
@@ -346,52 +346,59 @@ static inline void calc_global_nohz(void) { }
  *
  * Called from the global timer code.
  */
+// calc_load - 在 CPU 更新 calc_load_tasks 10 个滴答后更新平均负载估计值。
+// 从全局定时器代码调用。
 void calc_global_load(void)
 {
-	unsigned long sample_window;
-	long active, delta;
+    unsigned long sample_window;
+    long active, delta;
 
-	sample_window = READ_ONCE(calc_load_update);
-	if (time_before(jiffies, sample_window + 10))
-		return;
+    sample_window = READ_ONCE(calc_load_update);
+    if (time_before(jiffies, sample_window + 10))
+        return;
 
-	/*
-	 * Fold the 'old' NO_HZ-delta to include all NO_HZ CPUs.
-	 */
-	delta = calc_load_nohz_read();
-	if (delta)
-		atomic_long_add(delta, &calc_load_tasks);
+    /*
+     * Fold the 'old' NO_HZ-delta to include all NO_HZ CPUs.
+     */
+    // 折叠“旧的” NO_HZ 增量以包括所有 NO_HZ CPU。
+    delta = calc_load_nohz_read();
+    if (delta)
+        atomic_long_add(delta, &calc_load_tasks);
 
-	active = atomic_long_read(&calc_load_tasks);
-	active = active > 0 ? active * FIXED_1 : 0;
+    active = atomic_long_read(&calc_load_tasks);
+    active = active > 0 ? active * FIXED_1 : 0;
 
-	avenrun[0] = calc_load(avenrun[0], EXP_1, active);
-	avenrun[1] = calc_load(avenrun[1], EXP_5, active);
-	avenrun[2] = calc_load(avenrun[2], EXP_15, active);
+    avenrun[0] = calc_load(avenrun[0], EXP_1, active); // 更新 1 分钟平均负载
+    avenrun[1] = calc_load(avenrun[1], EXP_5, active); // 更新 5 分钟平均负载
+    avenrun[2] = calc_load(avenrun[2], EXP_15, active); // 更新 15 分钟平均负载
 
-	WRITE_ONCE(calc_load_update, sample_window + LOAD_FREQ);
+    WRITE_ONCE(calc_load_update, sample_window + LOAD_FREQ);
 
-	/*
-	 * In case we went to NO_HZ for multiple LOAD_FREQ intervals
-	 * catch up in bulk.
-	 */
-	calc_global_nohz();
+    /*
+     * In case we went to NO_HZ for multiple LOAD_FREQ intervals
+     * catch up in bulk.
+     */
+    // 如果我们在多个 LOAD_FREQ 间隔内进入 NO_HZ，则批量赶上。
+    calc_global_nohz();
 }
 
 /*
  * Called from sched_tick() to periodically update this CPU's
  * active count.
  */
+// 从 sched_tick() 调用，定期更新此 CPU 的活动计数。
 void calc_global_load_tick(struct rq *this_rq)
 {
-	long delta;
+    long delta;
 
-	if (time_before(jiffies, this_rq->calc_load_update))
-		return;
+    if (time_before(jiffies, this_rq->calc_load_update))
+        return;
 
-	delta  = calc_load_fold_active(this_rq, 0);
-	if (delta)
-		atomic_long_add(delta, &calc_load_tasks);
+//获取当前运行队列的负载相对值
+    delta  = calc_load_fold_active(this_rq, 0); // 计算活动任务的变化量
+    if (delta)
+	//添加到全局瞬时负载值
+        atomic_long_add(delta, &calc_load_tasks); // 原子地将变化量添加到全局负载任务计数中
 
-	this_rq->calc_load_update += LOAD_FREQ;
+    this_rq->calc_load_update += LOAD_FREQ; // 更新下次计算负载的时间
 }
