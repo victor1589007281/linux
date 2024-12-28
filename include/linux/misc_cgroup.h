@@ -49,15 +49,19 @@ struct misc_res {
  * @events_file: Handle for the misc resources events file.
  * @res: Array of misc resources usage in the cgroup.
  */
+// struct misc_cg - 杂项控制器的 cgroup 结构。
+// @css: cgroup 子系统状态对象。
+// @events_file: 杂项资源事件文件的句柄。
+// @res: cgroup 中杂项资源使用情况的数组。
 struct misc_cg {
-	struct cgroup_subsys_state css;
+    struct cgroup_subsys_state css; // cgroup 子系统状态对象
 
-	/* misc.events */
-	struct cgroup_file events_file;
-	/* misc.events.local */
-	struct cgroup_file events_local_file;
+    /* misc.events */
+    struct cgroup_file events_file; // 杂项资源事件文件的句柄
+    /* misc.events.local */
+    struct cgroup_file events_local_file; // 本地杂项资源事件文件的句柄
 
-	struct misc_res res[MISC_CG_RES_TYPES];
+    struct misc_res res[MISC_CG_RES_TYPES]; // cgroup 中杂项资源使用情况的数组
 };
 
 u64 misc_cg_res_total_usage(enum misc_res_type type);

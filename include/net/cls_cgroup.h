@@ -16,8 +16,8 @@
 
 #ifdef CONFIG_CGROUP_NET_CLASSID
 struct cgroup_cls_state {
-	struct cgroup_subsys_state css;
-	u32 classid;
+    struct cgroup_subsys_state css; // cgroup 子系统状态
+    u32 classid; // 类 ID，用于网络分类
 };
 
 struct cgroup_cls_state *task_cls_state(struct task_struct *p);

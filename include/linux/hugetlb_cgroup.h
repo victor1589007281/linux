@@ -33,28 +33,35 @@ struct hugetlb_cgroup_per_node {
 };
 
 struct hugetlb_cgroup {
-	struct cgroup_subsys_state css;
+    struct cgroup_subsys_state css; // cgroup 子系统状态
 
-	/*
-	 * the counter to account for hugepages from hugetlb.
-	 */
-	struct page_counter hugepage[HUGE_MAX_HSTATE];
+    /*
+     * the counter to account for hugepages from hugetlb.
+     */
+    // 用于记录来自 hugetlb 的大页的计数器
+    struct page_counter hugepage[HUGE_MAX_HSTATE];
 
-	/*
-	 * the counter to account for hugepage reservations from hugetlb.
-	 */
-	struct page_counter rsvd_hugepage[HUGE_MAX_HSTATE];
+    /*
+     * the counter to account for hugepage reservations from hugetlb.
+     */
+    // 用于记录来自 hugetlb 的大页保留的计数器
+    struct page_counter rsvd_hugepage[HUGE_MAX_HSTATE];
 
-	atomic_long_t events[HUGE_MAX_HSTATE][HUGETLB_NR_MEMORY_EVENTS];
-	atomic_long_t events_local[HUGE_MAX_HSTATE][HUGETLB_NR_MEMORY_EVENTS];
+    // 记录大页内存事件的计数器
+    atomic_long_t events[HUGE_MAX_HSTATE][HUGETLB_NR_MEMORY_EVENTS];
+    // 记录本地大页内存事件的计数器
+    atomic_long_t events_local[HUGE_MAX_HSTATE][HUGETLB_NR_MEMORY_EVENTS];
 
-	/* Handle for "hugetlb.events" */
-	struct cgroup_file events_file[HUGE_MAX_HSTATE];
+    /* Handle for "hugetlb.events" */
+    // "hugetlb.events" 的句柄
+    struct cgroup_file events_file[HUGE_MAX_HSTATE];
 
-	/* Handle for "hugetlb.events.local" */
-	struct cgroup_file events_local_file[HUGE_MAX_HSTATE];
+    /* Handle for "hugetlb.events.local" */
+    // "hugetlb.events.local" 的句柄
+    struct cgroup_file events_local_file[HUGE_MAX_HSTATE];
 
-	struct hugetlb_cgroup_per_node *nodeinfo[];
+    // 每个节点的 hugetlb cgroup 信息
+    struct hugetlb_cgroup_per_node *nodeinfo[];
 };
 
 static inline struct hugetlb_cgroup *

@@ -71,115 +71,116 @@ typedef enum {
 	FILE_SPREAD_SLAB,
 } cpuset_filetype_t;
 
+
 struct cpuset {
-	struct cgroup_subsys_state css;
+    struct cgroup_subsys_state css; // cgroup 子系统状态
 
-	unsigned long flags;		/* "unsigned long" so bitops work */
+    unsigned long flags; // 标志位，用于位操作
 
-	/*
-	 * On default hierarchy:
-	 *
-	 * The user-configured masks can only be changed by writing to
-	 * cpuset.cpus and cpuset.mems, and won't be limited by the
-	 * parent masks.
-	 *
-	 * The effective masks is the real masks that apply to the tasks
-	 * in the cpuset. They may be changed if the configured masks are
-	 * changed or hotplug happens.
-	 *
-	 * effective_mask == configured_mask & parent's effective_mask,
-	 * and if it ends up empty, it will inherit the parent's mask.
-	 *
-	 *
-	 * On legacy hierarchy:
-	 *
-	 * The user-configured masks are always the same with effective masks.
-	 */
+    /*
+     * On default hierarchy:
+     *
+     * The user-configured masks can only be changed by writing to
+     * cpuset.cpus and cpuset.mems, and won't be limited by the
+     * parent masks.
+     *
+     * The effective masks is the real masks that apply to the tasks
+     * in the cpuset. They may be changed if the configured masks are
+     * changed or hotplug happens.
+     *
+     * effective_mask == configured_mask & parent's effective_mask,
+     * and if it ends up empty, it will inherit the parent's mask.
+     *
+     *
+     * On legacy hierarchy:
+     *
+     * The user-configured masks are always the same with effective masks.
+     */
 
-	/* user-configured CPUs and Memory Nodes allow to tasks */
-	cpumask_var_t cpus_allowed;
-	nodemask_t mems_allowed;
+    /* user-configured CPUs and Memory Nodes allow to tasks */
+    cpumask_var_t cpus_allowed; // 用户配置的允许使用的 CPU 掩码
+    nodemask_t mems_allowed; // 用户配置的允许使用的内存节点掩码
 
-	/* effective CPUs and Memory Nodes allow to tasks */
-	cpumask_var_t effective_cpus;
-	nodemask_t effective_mems;
+    /* effective CPUs and Memory Nodes allow to tasks */
+    cpumask_var_t effective_cpus; // 有效的允许使用的 CPU 掩码
+    nodemask_t effective_mems; // 有效的允许使用的内存节点掩码
 
-	/*
-	 * Exclusive CPUs dedicated to current cgroup (default hierarchy only)
-	 *
-	 * The effective_cpus of a valid partition root comes solely from its
-	 * effective_xcpus and some of the effective_xcpus may be distributed
-	 * to sub-partitions below & hence excluded from its effective_cpus.
-	 * For a valid partition root, its effective_cpus have no relationship
-	 * with cpus_allowed unless its exclusive_cpus isn't set.
-	 *
-	 * This value will only be set if either exclusive_cpus is set or
-	 * when this cpuset becomes a local partition root.
-	 */
-	cpumask_var_t effective_xcpus;
+    /*
+     * Exclusive CPUs dedicated to current cgroup (default hierarchy only)
+     *
+     * The effective_cpus of a valid partition root comes solely from its
+     * effective_xcpus and some of the effective_xcpus may be distributed
+     * to sub-partitions below & hence excluded from its effective_cpus.
+     * For a valid partition root, its effective_cpus have no relationship
+     * with cpus_allowed unless its exclusive_cpus isn't set.
+     *
+     * This value will only be set if either exclusive_cpus is set or
+     * when this cpuset becomes a local partition root.
+     */
+    cpumask_var_t effective_xcpus; // 当前 cgroup 专用的有效 CPU 掩码（仅默认层次结构）
 
-	/*
-	 * Exclusive CPUs as requested by the user (default hierarchy only)
-	 *
-	 * Its value is independent of cpus_allowed and designates the set of
-	 * CPUs that can be granted to the current cpuset or its children when
-	 * it becomes a valid partition root. The effective set of exclusive
-	 * CPUs granted (effective_xcpus) depends on whether those exclusive
-	 * CPUs are passed down by its ancestors and not yet taken up by
-	 * another sibling partition root along the way.
-	 *
-	 * If its value isn't set, it defaults to cpus_allowed.
-	 */
-	cpumask_var_t exclusive_cpus;
+    /*
+     * Exclusive CPUs as requested by the user (default hierarchy only)
+     *
+     * Its value is independent of cpus_allowed and designates the set of
+     * CPUs that can be granted to the current cpuset or its children when
+     * it becomes a valid partition root. The effective set of exclusive
+     * CPUs granted (effective_xcpus) depends on whether those exclusive
+     * CPUs are passed down by its ancestors and not yet taken up by
+     * another sibling partition root along the way.
+     *
+     * If its value isn't set, it defaults to cpus_allowed.
+     */
+    cpumask_var_t exclusive_cpus; // 用户请求的专用 CPU 掩码（仅默认层次结构）
 
-	/*
-	 * This is old Memory Nodes tasks took on.
-	 *
-	 * - top_cpuset.old_mems_allowed is initialized to mems_allowed.
-	 * - A new cpuset's old_mems_allowed is initialized when some
-	 *   task is moved into it.
-	 * - old_mems_allowed is used in cpuset_migrate_mm() when we change
-	 *   cpuset.mems_allowed and have tasks' nodemask updated, and
-	 *   then old_mems_allowed is updated to mems_allowed.
-	 */
-	nodemask_t old_mems_allowed;
+    /*
+     * This is old Memory Nodes tasks took on.
+     *
+     * - top_cpuset.old_mems_allowed is initialized to mems_allowed.
+     * - A new cpuset's old_mems_allowed is initialized when some
+     *   task is moved into it.
+     * - old_mems_allowed is used in cpuset_migrate_mm() when we change
+     *   cpuset.mems_allowed and have tasks' nodemask updated, and
+     *   then old_mems_allowed is updated to mems_allowed.
+     */
+    nodemask_t old_mems_allowed; // 任务使用的旧内存节点掩码
 
-	struct fmeter fmeter;		/* memory_pressure filter */
+    struct fmeter fmeter; // 内存压力过滤器
 
-	/*
-	 * Tasks are being attached to this cpuset.  Used to prevent
-	 * zeroing cpus/mems_allowed between ->can_attach() and ->attach().
-	 */
-	int attach_in_progress;
+    /*
+     * Tasks are being attached to this cpuset.  Used to prevent
+     * zeroing cpus/mems_allowed between ->can_attach() and ->attach().
+     */
+    int attach_in_progress; // 正在附加任务
 
-	/* for custom sched domain */
-	int relax_domain_level;
+    /* for custom sched domain */
+    int relax_domain_level; // 自定义调度域的级别
 
-	/* number of valid local child partitions */
-	int nr_subparts;
+    /* number of valid local child partitions */
+    int nr_subparts; // 有效的本地子分区数量
 
-	/* partition root state */
-	int partition_root_state;
+    /* partition root state */
+    int partition_root_state; // 分区根状态
 
-	/*
-	 * number of SCHED_DEADLINE tasks attached to this cpuset, so that we
-	 * know when to rebuild associated root domain bandwidth information.
-	 */
-	int nr_deadline_tasks;
-	int nr_migrate_dl_tasks;
-	u64 sum_migrate_dl_bw;
+    /*
+     * number of SCHED_DEADLINE tasks attached to this cpuset, so that we
+     * know when to rebuild associated root domain bandwidth information.
+     */
+    int nr_deadline_tasks; // 附加到此 cpuset 的 SCHED_DEADLINE 任务数量
+    int nr_migrate_dl_tasks; // 迁移的 SCHED_DEADLINE 任务数量
+    u64 sum_migrate_dl_bw; // 迁移的 SCHED_DEADLINE 任务的带宽总和
 
-	/* Invalid partition error code, not lock protected */
-	enum prs_errcode prs_err;
+    /* Invalid partition error code, not lock protected */
+    enum prs_errcode prs_err; // 无效分区错误代码，不受锁保护
 
-	/* Handle for cpuset.cpus.partition */
-	struct cgroup_file partition_file;
+    /* Handle for cpuset.cpus.partition */
+    struct cgroup_file partition_file; // cpuset.cpus.partition 的句柄
 
-	/* Remote partition silbling list anchored at remote_children */
-	struct list_head remote_sibling;
+    /* Remote partition silbling list anchored at remote_children */
+    struct list_head remote_sibling; // 远程分区兄弟列表，锚定在 remote_children
 
-	/* Used to merge intersecting subsets for generate_sched_domains */
-	struct uf_node node;
+    /* Used to merge intersecting subsets for generate_sched_domains */
+    struct uf_node node; // 用于合并交叉子集以生成调度域
 };
 
 static inline struct cpuset *css_cs(struct cgroup_subsys_state *css)

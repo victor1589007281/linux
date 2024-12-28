@@ -41,9 +41,9 @@ struct dev_exception_item {
 };
 
 struct dev_cgroup {
-	struct cgroup_subsys_state css;
-	struct list_head exceptions;
-	enum devcg_behavior behavior;
+    struct cgroup_subsys_state css; // cgroup 子系统状态
+    struct list_head exceptions; // 设备访问例外列表
+    enum devcg_behavior behavior; // 设备 cgroup 行为
 };
 
 static inline struct dev_cgroup *css_to_devcgroup(struct cgroup_subsys_state *s)
