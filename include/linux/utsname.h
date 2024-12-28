@@ -21,12 +21,15 @@ enum uts_proc {
 struct user_namespace;
 extern struct user_namespace init_user_ns;
 
+//UNIX Time-sharing System
+//用户隔离主机名和域名
 struct uts_namespace {
-	struct new_utsname name;
-	struct user_namespace *user_ns;
-	struct ucounts *ucounts;
-	struct ns_common ns;
-} __randomize_layout;
+    struct new_utsname name; // UTS 名称
+    struct user_namespace *user_ns; // 用户命名空间
+    struct ucounts *ucounts; // 用户计数
+    struct ns_common ns; // 命名空间公共部分
+} __randomize_layout; // 随机化布局
+
 extern struct uts_namespace init_uts_ns;
 
 #ifdef CONFIG_UTS_NS

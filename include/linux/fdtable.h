@@ -24,36 +24,40 @@
 #define NR_OPEN_DEFAULT BITS_PER_LONG
 
 struct fdtable {
-	unsigned int max_fds;
-	struct file __rcu **fd;      /* current fd array */
-	unsigned long *close_on_exec;
-	unsigned long *open_fds;
-	unsigned long *full_fds_bits;
-	struct rcu_head rcu;
+    unsigned int max_fds; // 最大文件描述符数量
+    struct file __rcu **fd;      /* current fd array */
+    // 当前文件描述符数组
+    unsigned long *close_on_exec; // close-on-exec 位图
+    unsigned long *open_fds; // 打开文件描述符位图
+    unsigned long *full_fds_bits; // 完整文件描述符位图
+    struct rcu_head rcu; // RCU 头
 };
 
 /*
  * Open file table structure
  */
+// 打开文件表结构
 struct files_struct {
   /*
    * read mostly part
    */
-	atomic_t count;
-	bool resize_in_progress;
-	wait_queue_head_t resize_wait;
+  // 主要用于读取的部分
+    atomic_t count; // 引用计数
+    bool resize_in_progress; // 是否正在调整大小
+    wait_queue_head_t resize_wait; // 调整大小等待队列
 
-	struct fdtable __rcu *fdt;
-	struct fdtable fdtab;
+    struct fdtable __rcu *fdt; // 文件描述符表指针
+    struct fdtable fdtab; // 文件描述符表
   /*
    * written part on a separate cache line in SMP
    */
-	spinlock_t file_lock ____cacheline_aligned_in_smp;
-	unsigned int next_fd;
-	unsigned long close_on_exec_init[1];
-	unsigned long open_fds_init[1];
-	unsigned long full_fds_bits_init[1];
-	struct file __rcu * fd_array[NR_OPEN_DEFAULT];
+  // 在 SMP 中写入部分位于单独的缓存行中
+    spinlock_t file_lock ____cacheline_aligned_in_smp; // 自旋锁
+    unsigned int next_fd; // 下一个可用的文件描述符
+    unsigned long close_on_exec_init[1]; // close-on-exec 初始化位图
+    unsigned long open_fds_init[1]; // 打开文件描述符初始化位图
+    unsigned long full_fds_bits_init[1]; // 完整文件描述符位图初始化
+    struct file __rcu * fd_array[NR_OPEN_DEFAULT]; // 文件指针数组
 };
 
 struct file_operations;

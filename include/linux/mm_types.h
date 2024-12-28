@@ -793,28 +793,33 @@ struct mm_struct {
 		 * Fields which are often written to are placed in a separate
 		 * cache line.
 		 */
+		// 经常写入的字段被放置在一个单独的缓存行中。
 		struct {
-			/**
-			 * @mm_count: The number of references to &struct
-			 * mm_struct (@mm_users count as 1).
-			 *
-			 * Use mmgrab()/mmdrop() to modify. When this drops to
-			 * 0, the &struct mm_struct is freed.
-			 */
-			atomic_t mm_count;
+		    /**
+		     * @mm_count: The number of references to &struct
+		     * mm_struct (@mm_users count as 1).
+		     *
+		     * Use mmgrab()/mmdrop() to modify. When this drops to
+		     * 0, the &struct mm_struct is freed.
+		     */
+		    // @mm_count: 对 &struct mm_struct 的引用数量（@mm_users 计数为 1）。
+		    // 使用 mmgrab()/mmdrop() 进行修改。当这个值降到 0 时，&struct mm_struct 被释放。
+		    atomic_t mm_count;
 		} ____cacheline_aligned_in_smp;
-
-		struct maple_tree mm_mt;
-
-		unsigned long mmap_base;	/* base of mmap area */
-		unsigned long mmap_legacy_base;	/* base of mmap area in bottom-up allocations */
+		
+		struct maple_tree mm_mt; // maple 树
+		
+		unsigned long mmap_base; // mmap 区域的基址
+		unsigned long mmap_legacy_base; // 底部向上分配的 mmap 区域的基址
 #ifdef CONFIG_HAVE_ARCH_COMPAT_MMAP_BASES
 		/* Base addresses for compatible mmap() */
 		unsigned long mmap_compat_base;
 		unsigned long mmap_compat_legacy_base;
 #endif
 		unsigned long task_size;	/* size of task vm space */
-		pgd_t * pgd;
+		// 任务虚拟内存空间的大小
+		pgd_t *pgd;	/* Page global directory */
+		// 页全局目录
 
 #ifdef CONFIG_MEMBARRIER
 		/**
@@ -857,10 +862,13 @@ struct mm_struct {
 		atomic_long_t pgtables_bytes;	/* size of all page tables */
 #endif
 		int map_count;			/* number of VMAs */
-
+		// VMAs 的数量
+		
 		spinlock_t page_table_lock; /* Protects page tables and some
-					     * counters
-					     */
+		                 * counters
+		                 */
+		// 保护页表和一些计数器的自旋锁
+		
 		/*
 		 * With some kernel config, the current mmap_lock's offset
 		 * inside 'mm_struct' is at 0x120, which is very optimal, as
@@ -873,13 +881,16 @@ struct mm_struct {
 		 * mmap_lock, which can easily push the 2 fields into one
 		 * cacheline.
 		 */
+		// 在某些内核配置下，当前 mmap_lock 在 'mm_struct' 中的偏移量为 0x120，这是非常理想的，因为它的两个热点字段 'count' 和 'owner' 位于两个不同的缓存行中，当 mmap_lock 高度竞争时，这两个字段都会被频繁访问，当前布局有助于减少缓存抖动。
+		// 因此，请小心在 mmap_lock 之前添加新字段，这很容易将这两个字段推入一个缓存行中。
 		struct rw_semaphore mmap_lock;
-
+		
 		struct list_head mmlist; /* List of maybe swapped mm's.	These
-					  * are globally strung together off
-					  * init_mm.mmlist, and are protected
-					  * by mmlist_lock
-					  */
+		              * are globally strung together off
+		              * init_mm.mmlist, and are protected
+		              * by mmlist_lock
+		              */
+		// 可能被交换的 mm 的列表。这些全局串联在 init_mm.mmlist 上，并受 mmlist_lock 保护。
 #ifdef CONFIG_PER_VMA_LOCK
 		/*
 		 * This field has lock-like semantics, meaning it is sometimes
@@ -900,40 +911,58 @@ struct mm_struct {
 
 
 		unsigned long hiwater_rss; /* High-watermark of RSS usage */
+		// RSS 使用的高水位标记
 		unsigned long hiwater_vm;  /* High-water virtual memory usage */
-
+		// 虚拟内存使用的高水位标记
+		
 		unsigned long total_vm;	   /* Total pages mapped */
+		// 映射的总页数
 		unsigned long locked_vm;   /* Pages that have PG_mlocked set */
-		atomic64_t    pinned_vm;   /* Refcount permanently increased */
+		// 设置了 PG_mlocked 的页数
+		atomic64_t pinned_vm;      /* Refcount permanently increased */
+		// 永久增加的引用计数
 		unsigned long data_vm;	   /* VM_WRITE & ~VM_SHARED & ~VM_STACK */
+		// 数据段的虚拟内存（VM_WRITE & ~VM_SHARED & ~VM_STACK）
 		unsigned long exec_vm;	   /* VM_EXEC & ~VM_WRITE & ~VM_STACK */
+		// 可执行段的虚拟内存（VM_EXEC & ~VM_WRITE & ~VM_STACK）
 		unsigned long stack_vm;	   /* VM_STACK */
-		unsigned long def_flags;
-
+		// 栈段的虚拟内存（VM_STACK）
+		unsigned long def_flags;   // 默认标志
+		
 		/**
 		 * @write_protect_seq: Locked when any thread is write
 		 * protecting pages mapped by this mm to enforce a later COW,
 		 * for instance during page table copying for fork().
 		 */
+		// @write_protect_seq: 当任何线程写保护此 mm 映射的页面以强制执行稍后的 COW 时锁定，例如在 fork() 的页表复制期间。
 		seqcount_t write_protect_seq;
-
+		
 		spinlock_t arg_lock; /* protect the below fields */
-
+		// 保护以下字段的自旋锁
+		
 		unsigned long start_code, end_code, start_data, end_data;
+		// 代码段的起始和结束地址，数据段的起始和结束地址
 		unsigned long start_brk, brk, start_stack;
+		// 堆的起始地址，当前堆顶，栈的起始地址
 		unsigned long arg_start, arg_end, env_start, env_end;
-
+		// 参数的起始和结束地址，环境变量的起始和结束地址
+		
 		unsigned long saved_auxv[AT_VECTOR_SIZE]; /* for /proc/PID/auxv */
-
+		// 用于 /proc/PID/auxv 的辅助向量
+		
 		struct percpu_counter rss_stat[NR_MM_COUNTERS];
-
+		// 每 CPU 计数器的 RSS 统计信息
+		
 		struct linux_binfmt *binfmt;
-
+		// 二进制格式
+		
 		/* Architecture-specific MM context */
+		// 特定于架构的 MM 上下文
 		mm_context_t context;
-
+		
 		unsigned long flags; /* Must use atomic bitops to access */
-
+		// 标志，必须使用原子位操作来访问
+		
 #ifdef CONFIG_AIO
 		spinlock_t			ioctx_lock;
 		struct kioctx_table __rcu	*ioctx_table;

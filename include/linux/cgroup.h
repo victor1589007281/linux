@@ -767,10 +767,10 @@ static inline void cgroup_sk_free(struct sock_cgroup_data *skcd) {}
 #endif	/* CONFIG_CGROUP_DATA */
 
 struct cgroup_namespace {
-	struct ns_common	ns;
-	struct user_namespace	*user_ns;
-	struct ucounts		*ucounts;
-	struct css_set          *root_cset;
+    struct ns_common	ns; // 命名空间公共部分
+    struct user_namespace	*user_ns; // 用户命名空间
+    struct ucounts		*ucounts; // 用户计数
+    struct css_set          *root_cset; // 根 css 集合
 };
 
 extern struct cgroup_namespace init_cgroup_ns;

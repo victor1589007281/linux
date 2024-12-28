@@ -80,42 +80,60 @@ extern const struct qstr dotdot_name;
 #define d_lock	d_lockref.lock
 
 struct dentry {
-	/* RCU lookup touched fields */
-	unsigned int d_flags;		/* protected by d_lock */
-	seqcount_spinlock_t d_seq;	/* per dentry seqlock */
-	struct hlist_bl_node d_hash;	/* lookup hash list */
-	struct dentry *d_parent;	/* parent directory */
-	struct qstr d_name;
-	struct inode *d_inode;		/* Where the name belongs to - NULL is
-					 * negative */
-	unsigned char d_iname[DNAME_INLINE_LEN];	/* small names */
-	/* --- cacheline 1 boundary (64 bytes) was 32 bytes ago --- */
+    /* RCU lookup touched fields */
+    unsigned int d_flags;		/* protected by d_lock */
+    // 受 d_lock 保护的标志
+    seqcount_spinlock_t d_seq;	/* per dentry seqlock */
+    // 每个 dentry 的序列锁
+    struct hlist_bl_node d_hash;	/* lookup hash list */
+    // 查找哈希列表
+    struct dentry *d_parent;	/* parent directory */
+    // 父目录
+    struct qstr d_name; // dentry 名称
+    struct inode *d_inode;		/* Where the name belongs to - NULL is
+                     * negative */
+    // 名称所属的 inode - NULL 表示负值
+    unsigned char d_iname[DNAME_INLINE_LEN];	/* small names */
+    // 小名称
+    /* --- cacheline 1 boundary (64 bytes) was 32 bytes ago --- */
 
-	/* Ref lookup also touches following */
-	const struct dentry_operations *d_op;
-	struct super_block *d_sb;	/* The root of the dentry tree */
-	unsigned long d_time;		/* used by d_revalidate */
-	void *d_fsdata;			/* fs-specific data */
-	/* --- cacheline 2 boundary (128 bytes) --- */
-	struct lockref d_lockref;	/* per-dentry lock and refcount
-					 * keep separate from RCU lookup area if
-					 * possible!
-					 */
+    /* Ref lookup also touches following */
+    const struct dentry_operations *d_op;
+    // dentry 操作
+    struct super_block *d_sb;	/* The root of the dentry tree */
+    // dentry 树的根
+    unsigned long d_time;		/* used by d_revalidate */
+    // 由 d_revalidate 使用
+    void *d_fsdata;			/* fs-specific data */
+    // 文件系统特定数据
+    /* --- cacheline 2 boundary (128 bytes) --- */
+    struct lockref d_lockref;	/* per-dentry lock and refcount
+                     * keep separate from RCU lookup area if
+                     * possible!
+                     */
+    // 每个 dentry 的锁和引用计数，如果可能，保持与 RCU 查找区域分开
 
-	union {
-		struct list_head d_lru;		/* LRU list */
-		wait_queue_head_t *d_wait;	/* in-lookup ones only */
-	};
-	struct hlist_node d_sib;	/* child of parent list */
-	struct hlist_head d_children;	/* our children */
-	/*
-	 * d_alias and d_rcu can share memory
-	 */
-	union {
-		struct hlist_node d_alias;	/* inode alias list */
-		struct hlist_bl_node d_in_lookup_hash;	/* only for in-lookup ones */
-	 	struct rcu_head d_rcu;
-	} d_u;
+    union {
+        struct list_head d_lru;		/* LRU list */
+        // LRU 列表
+        wait_queue_head_t *d_wait;	/* in-lookup ones only */
+        // 仅在查找中的等待队列
+    };
+    struct hlist_node d_sib;	/* child of parent list */
+    // 父列表的子节点
+    struct hlist_head d_children;	/* our children */
+    // 我们的子节点
+    /*
+     * d_alias and d_rcu can share memory
+     */
+    // d_alias 和 d_rcu 可以共享内存
+    union {
+        struct hlist_node d_alias;	/* inode alias list */
+        // inode 别名列表
+        struct hlist_bl_node d_in_lookup_hash;	/* only for in-lookup ones */
+        // 仅用于查找中的哈希
+     	struct rcu_head d_rcu; // RCU 头
+    } d_u;
 };
 
 /*

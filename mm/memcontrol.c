@@ -471,39 +471,48 @@ static inline int memcg_events_index(enum vm_event_item idx)
 }
 
 struct memcg_vmstats_percpu {
-	/* Stats updates since the last flush */
-	unsigned int			stats_updates;
+    /* Stats updates since the last flush */
+    // 自上次刷新以来的统计更新
+    unsigned int			stats_updates;
 
-	/* Cached pointers for fast iteration in memcg_rstat_updated() */
-	struct memcg_vmstats_percpu	*parent;
-	struct memcg_vmstats		*vmstats;
+    /* Cached pointers for fast iteration in memcg_rstat_updated() */
+    // 在 memcg_rstat_updated() 中快速迭代的缓存指针
+    struct memcg_vmstats_percpu	*parent;
+    struct memcg_vmstats		*vmstats;
 
-	/* The above should fit a single cacheline for memcg_rstat_updated() */
+    /* The above should fit a single cacheline for memcg_rstat_updated() */
+    // 上述内容应适合 memcg_rstat_updated() 的单个缓存行
 
-	/* Local (CPU and cgroup) page state & events */
-	long			state[MEMCG_VMSTAT_SIZE];
-	unsigned long		events[NR_MEMCG_EVENTS];
+    /* Local (CPU and cgroup) page state & events */
+    // 本地（CPU 和 cgroup）页面状态和事件
+    long			state[MEMCG_VMSTAT_SIZE];
+    unsigned long		events[NR_MEMCG_EVENTS];
 
-	/* Delta calculation for lockless upward propagation */
-	long			state_prev[MEMCG_VMSTAT_SIZE];
-	unsigned long		events_prev[NR_MEMCG_EVENTS];
-} ____cacheline_aligned;
+    /* Delta calculation for lockless upward propagation */
+    // 无锁向上传播的增量计算
+    long			state_prev[MEMCG_VMSTAT_SIZE];
+    unsigned long		events_prev[NR_MEMCG_EVENTS];
+} ____cacheline_aligned; // 缓存行对齐
 
 struct memcg_vmstats {
-	/* Aggregated (CPU and subtree) page state & events */
-	long			state[MEMCG_VMSTAT_SIZE];
-	unsigned long		events[NR_MEMCG_EVENTS];
+    /* Aggregated (CPU and subtree) page state & events */
+    // 聚合的（CPU 和子树）页面状态和事件
+    long			state[MEMCG_VMSTAT_SIZE];
+    unsigned long		events[NR_MEMCG_EVENTS];
 
-	/* Non-hierarchical (CPU aggregated) page state & events */
-	long			state_local[MEMCG_VMSTAT_SIZE];
-	unsigned long		events_local[NR_MEMCG_EVENTS];
+    /* Non-hierarchical (CPU aggregated) page state & events */
+    // 非层次结构的（CPU 聚合的）页面状态和事件
+    long			state_local[MEMCG_VMSTAT_SIZE];
+    unsigned long		events_local[NR_MEMCG_EVENTS];
 
-	/* Pending child counts during tree propagation */
-	long			state_pending[MEMCG_VMSTAT_SIZE];
-	unsigned long		events_pending[NR_MEMCG_EVENTS];
+    /* Pending child counts during tree propagation */
+    // 树传播期间的待处理子计数
+    long			state_pending[MEMCG_VMSTAT_SIZE];
+    unsigned long		events_pending[NR_MEMCG_EVENTS];
 
-	/* Stats updates since the last flush */
-	atomic64_t		stats_updates;
+    /* Stats updates since the last flush */
+    // 自上次刷新以来的统计更新
+    atomic64_t		stats_updates;
 };
 
 /*

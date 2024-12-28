@@ -23,25 +23,27 @@ struct fs_pin;
 #define MEMFD_NOEXEC_SCOPE_NOEXEC_ENFORCED	2 /* same as 1, except MFD_EXEC rejected */
 #endif
 
+//隔离进程PID
 struct pid_namespace {
-	struct idr idr;
-	struct rcu_head rcu;
-	unsigned int pid_allocated;
-	struct task_struct *child_reaper;
-	struct kmem_cache *pid_cachep;
-	unsigned int level;
-	struct pid_namespace *parent;
+    struct idr idr; // ID 分配器
+    struct rcu_head rcu; // RCU 头
+    unsigned int pid_allocated; // 已分配的 PID 数量
+    struct task_struct *child_reaper; // 子进程收割者
+    struct kmem_cache *pid_cachep; // PID 缓存
+    unsigned int level; // 命名空间级别
+    struct pid_namespace *parent; // 父命名空间
 #ifdef CONFIG_BSD_PROCESS_ACCT
-	struct fs_pin *bacct;
+    struct fs_pin *bacct; // BSD 进程会计
 #endif
-	struct user_namespace *user_ns;
-	struct ucounts *ucounts;
-	int reboot;	/* group exit code if this pidns was rebooted */
-	struct ns_common ns;
+    struct user_namespace *user_ns; // 用户命名空间
+    struct ucounts *ucounts; // 用户计数
+    int reboot;	/* group exit code if this pidns was rebooted */
+    // 如果此 PID 命名空间重新启动，则组退出代码
+    struct ns_common ns; // 命名空间公共部分
 #if defined(CONFIG_SYSCTL) && defined(CONFIG_MEMFD_CREATE)
-	int memfd_noexec_scope;
+    int memfd_noexec_scope; // memfd noexec 范围
 #endif
-} __randomize_layout;
+} __randomize_layout; // 随机化布局
 
 extern struct pid_namespace init_pid_ns;
 

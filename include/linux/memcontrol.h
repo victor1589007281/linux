@@ -180,151 +180,187 @@ struct obj_cgroup {
  * statistics based on the statistics developed by Rik Van Riel for clock-pro,
  * to help the administrator determine what knobs to tune.
  */
+// 内存控制器数据结构。内存控制器控制每个 cgroup 的页面缓存和 RSS。
+// 我们最终希望提供基于 Rik Van Riel 为 clock-pro 开发的统计数据的统计信息，以帮助管理员确定要调整的参数。
 struct mem_cgroup {
-	struct cgroup_subsys_state css;
+    struct cgroup_subsys_state css; // cgroup 子系统状态
 
-	/* Private memcg ID. Used to ID objects that outlive the cgroup */
-	struct mem_cgroup_id id;
+    /* Private memcg ID. Used to ID objects that outlive the cgroup */
+    // 私有 memcg ID。用于标识比 cgroup 存活时间更长的对象
+    struct mem_cgroup_id id;
 
-	/* Accounted resources */
-	struct page_counter memory;		/* Both v1 & v2 */
+    /* Accounted resources */
+    // 计费资源
+    struct page_counter memory;		/* Both v1 & v2 */
+    // 页面计数器，适用于 v1 和 v2
 
-	union {
-		struct page_counter swap;	/* v2 only */
-		struct page_counter memsw;	/* v1 only */
-	};
+    union {
+        struct page_counter swap;	/* v2 only */
+        // 页面计数器，仅适用于 v2
+        struct page_counter memsw;	/* v1 only */
+        // 页面计数器，仅适用于 v1
+    };
 
-	/* registered local peak watchers */
-	struct list_head memory_peaks;
-	struct list_head swap_peaks;
-	spinlock_t	 peaks_lock;
+    /* registered local peak watchers */
+    // 注册的本地峰值监视器
+    struct list_head memory_peaks;
+    struct list_head swap_peaks;
+    spinlock_t	 peaks_lock; // 峰值锁
 
-	/* Range enforcement for interrupt charges */
-	struct work_struct high_work;
+    /* Range enforcement for interrupt charges */
+    // 中断费用的范围执行
+    struct work_struct high_work;
 
 #ifdef CONFIG_ZSWAP
-	unsigned long zswap_max;
+    unsigned long zswap_max; // zswap 最大值
 
-	/*
-	 * Prevent pages from this memcg from being written back from zswap to
-	 * swap, and from being swapped out on zswap store failures.
-	 */
-	bool zswap_writeback;
+    /*
+     * Prevent pages from this memcg from being written back from zswap to
+     * swap, and from being swapped out on zswap store failures.
+     */
+    // 防止此 memcg 的页面从 zswap 写回到 swap，并在 zswap 存储失败时被交换出去。
+    bool zswap_writeback;
 #endif
 
-	/* vmpressure notifications */
-	struct vmpressure vmpressure;
+    /* vmpressure notifications */
+    // vmpressure 通知
+    struct vmpressure vmpressure;
 
-	/*
-	 * Should the OOM killer kill all belonging tasks, had it kill one?
-	 */
-	bool oom_group;
+    /*
+     * Should the OOM killer kill all belonging tasks, had it kill one?
+     */
+    // OOM 杀手是否应该杀死所有属于此 memcg 的任务，还是只杀死一个？
+    bool oom_group;
 
-	int swappiness;
+    int swappiness; // 交换性
 
-	/* memory.events and memory.events.local */
-	struct cgroup_file events_file;
-	struct cgroup_file events_local_file;
+    /* memory.events and memory.events.local */
+    // 内存事件和本地内存事件
+    struct cgroup_file events_file;
+    struct cgroup_file events_local_file;
 
-	/* handle for "memory.swap.events" */
-	struct cgroup_file swap_events_file;
+    /* handle for "memory.swap.events" */
+    // "memory.swap.events" 的句柄
+    struct cgroup_file swap_events_file;
 
-	/* memory.stat */
-	struct memcg_vmstats	*vmstats;
+    /* memory.stat */
+    // 内存统计
+    struct memcg_vmstats	*vmstats;
 
-	/* memory.events */
-	atomic_long_t		memory_events[MEMCG_NR_MEMORY_EVENTS];
-	atomic_long_t		memory_events_local[MEMCG_NR_MEMORY_EVENTS];
+    /* memory.events */
+    // 内存事件
+    atomic_long_t		memory_events[MEMCG_NR_MEMORY_EVENTS];
+    atomic_long_t		memory_events_local[MEMCG_NR_MEMORY_EVENTS];
 
-	/*
-	 * Hint of reclaim pressure for socket memroy management. Note
-	 * that this indicator should NOT be used in legacy cgroup mode
-	 * where socket memory is accounted/charged separately.
-	 */
-	unsigned long		socket_pressure;
+    /*
+     * Hint of reclaim pressure for socket memroy management. Note
+     * that this indicator should NOT be used in legacy cgroup mode
+     * where socket memory is accounted/charged separately.
+     */
+    // 套接字内存管理的回收压力提示。请注意，此指示器不应在套接字内存单独计费的旧版 cgroup 模式中使用。
+    unsigned long		socket_pressure;
 
-	int kmemcg_id;
-	/*
-	 * memcg->objcg is wiped out as a part of the objcg repaprenting
-	 * process. memcg->orig_objcg preserves a pointer (and a reference)
-	 * to the original objcg until the end of live of memcg.
-	 */
-	struct obj_cgroup __rcu	*objcg;
-	struct obj_cgroup	*orig_objcg;
-	/* list of inherited objcgs, protected by objcg_lock */
-	struct list_head objcg_list;
+    int kmemcg_id; // 内核内存 cgroup ID
+    /*
+     * memcg->objcg is wiped out as a part of the objcg repaprenting
+     * process. memcg->orig_objcg preserves a pointer (and a reference)
+     * to the original objcg until the end of live of memcg.
+     */
+    // memcg->objcg 作为 objcg 重新分配过程的一部分被清除。
+    // memcg->orig_objcg 保留指向原始 objcg 的指针（和引用），直到 memcg 的生命周期结束。
+    struct obj_cgroup __rcu	*objcg;
+    struct obj_cgroup	*orig_objcg;
+    /* list of inherited objcgs, protected by objcg_lock */
+    // 继承的 objcg 列表，受 objcg_lock 保护
+    struct list_head objcg_list;
 
-	struct memcg_vmstats_percpu __percpu *vmstats_percpu;
+    struct memcg_vmstats_percpu __percpu *vmstats_percpu; // 每 CPU 内存统计
 
 #ifdef CONFIG_CGROUP_WRITEBACK
-	struct list_head cgwb_list;
-	struct wb_domain cgwb_domain;
-	struct memcg_cgwb_frn cgwb_frn[MEMCG_CGWB_FRN_CNT];
+    struct list_head cgwb_list; // cgroup 写回列表
+    struct wb_domain cgwb_domain; // 写回域
+    struct memcg_cgwb_frn cgwb_frn[MEMCG_CGWB_FRN_CNT]; // cgroup 写回前缀
 #endif
 
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
-	struct deferred_split deferred_split_queue;
+    struct deferred_split deferred_split_queue; // 延迟拆分队列
 #endif
 
 #ifdef CONFIG_LRU_GEN_WALKS_MMU
-	/* per-memcg mm_struct list */
-	struct lru_gen_mm_list mm_list;
+    /* per-memcg mm_struct list */
+    // 每个 memcg 的 mm_struct 列表
+    struct lru_gen_mm_list mm_list;
 #endif
 
 #ifdef CONFIG_MEMCG_V1
-	/* Legacy consumer-oriented counters */
-	struct page_counter kmem;		/* v1 only */
-	struct page_counter tcpmem;		/* v1 only */
+    /* Legacy consumer-oriented counters */
+    // 旧版面向消费者的计数器
+    struct page_counter kmem;		/* v1 only */
+    // 页面计数器，仅适用于 v1
+    struct page_counter tcpmem;		/* v1 only */
+    // TCP 内存计数器，仅适用于 v1
 
-	struct memcg1_events_percpu __percpu *events_percpu;
+    struct memcg1_events_percpu __percpu *events_percpu; // 每 CPU 事件
 
-	unsigned long soft_limit;
+    unsigned long soft_limit; // 软限制
 
-	/* protected by memcg_oom_lock */
-	bool oom_lock;
-	int under_oom;
+    /* protected by memcg_oom_lock */
+    // 受 memcg_oom_lock 保护
+    bool oom_lock;
+    int under_oom; // OOM 状态
 
-	/* OOM-Killer disable */
-	int oom_kill_disable;
+    /* OOM-Killer disable */
+    // 禁用 OOM 杀手
+    int oom_kill_disable;
 
-	/* protect arrays of thresholds */
-	struct mutex thresholds_lock;
+    /* protect arrays of thresholds */
+    // 保护阈值数组
+    struct mutex thresholds_lock;
 
-	/* thresholds for memory usage. RCU-protected */
-	struct mem_cgroup_thresholds thresholds;
+    /* thresholds for memory usage. RCU-protected */
+    // 内存使用的阈值。受 RCU 保护
+    struct mem_cgroup_thresholds thresholds;
 
-	/* thresholds for mem+swap usage. RCU-protected */
-	struct mem_cgroup_thresholds memsw_thresholds;
+    /* thresholds for mem+swap usage. RCU-protected */
+    // 内存和交换使用的阈值。受 RCU 保护
+    struct mem_cgroup_thresholds memsw_thresholds;
 
-	/* For oom notifier event fd */
-	struct list_head oom_notify;
+    /* For oom notifier event fd */
+    // 用于 OOM 通知事件的文件描述符
+    struct list_head oom_notify;
 
-	/*
-	 * Should we move charges of a task when a task is moved into this
-	 * mem_cgroup ? And what type of charges should we move ?
-	 */
-	unsigned long move_charge_at_immigrate;
-	/* taken only while moving_account > 0 */
-	spinlock_t move_lock;
-	unsigned long move_lock_flags;
+    /*
+     * Should we move charges of a task when a task is moved into this
+     * mem_cgroup ? And what type of charges should we move ?
+     */
+    // 当任务移动到此 mem_cgroup 时，我们是否应该移动任务的费用？我们应该移动哪种类型的费用？
+    unsigned long move_charge_at_immigrate;
+    /* taken only while moving_account > 0 */
+    // 仅在 moving_account > 0 时获取
+    spinlock_t move_lock;
+    unsigned long move_lock_flags;
 
-	/* Legacy tcp memory accounting */
-	bool tcpmem_active;
-	int tcpmem_pressure;
+    /* Legacy tcp memory accounting */
+    // 旧版 TCP 内存计费
+    bool tcpmem_active;
+    int tcpmem_pressure; // TCP 内存压力
 
-	/*
-	 * set > 0 if pages under this cgroup are moving to other cgroup.
-	 */
-	atomic_t moving_account;
-	struct task_struct *move_lock_task;
+    /*
+     * set > 0 if pages under this cgroup are moving to other cgroup.
+     */
+    // 如果此 cgroup 下的页面正在移动到其他 cgroup，则设置 > 0。
+    atomic_t moving_account;
+    struct task_struct *move_lock_task; // 移动锁任务
 
-	/* List of events which userspace want to receive */
-	struct list_head event_list;
-	spinlock_t event_list_lock;
+    /* List of events which userspace want to receive */
+    // 用户空间希望接收的事件列表
+    struct list_head event_list;
+    spinlock_t event_list_lock; // 事件列表锁
 #endif /* CONFIG_MEMCG_V1 */
 
-	struct mem_cgroup_per_node *nodeinfo[];
+    struct mem_cgroup_per_node *nodeinfo[]; // 每个节点的内存 cgroup 信息
 };
+
 
 /*
  * size of first charge trial.

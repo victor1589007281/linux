@@ -2690,47 +2690,48 @@ static int memcg_numa_stat_show(struct seq_file *m, void *v)
 #endif /* CONFIG_NUMA */
 
 static const unsigned int memcg1_stats[] = {
-	NR_FILE_PAGES,
-	NR_ANON_MAPPED,
+    NR_FILE_PAGES, // 文件页数
+    NR_ANON_MAPPED, // 匿名映射页数
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
-	NR_ANON_THPS,
+    NR_ANON_THPS, // 匿名透明大页数
 #endif
-	NR_SHMEM,
-	NR_FILE_MAPPED,
-	NR_FILE_DIRTY,
-	NR_WRITEBACK,
-	WORKINGSET_REFAULT_ANON,
-	WORKINGSET_REFAULT_FILE,
+    NR_SHMEM, // 共享内存页数
+    NR_FILE_MAPPED, // 文件映射页数
+    NR_FILE_DIRTY, // 脏文件页数
+    NR_WRITEBACK, // 回写页数
+    WORKINGSET_REFAULT_ANON, // 工作集匿名重引用
+    WORKINGSET_REFAULT_FILE, // 工作集文件重引用
 #ifdef CONFIG_SWAP
-	MEMCG_SWAP,
-	NR_SWAPCACHE,
+    MEMCG_SWAP, // 交换内存页数
+    NR_SWAPCACHE, // 交换缓存页数
 #endif
 };
 
 static const char *const memcg1_stat_names[] = {
-	"cache",
-	"rss",
+    "cache", // 缓存：PageCache中的缓存的硬盘数据页数
+    "rss", // 常驻集大小：进程实际使用RAM页数，不包括交换出去的页
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
-	"rss_huge",
+    "rss_huge", // 大页常驻集大小：使用透明大页（HugePages）的常驻集大小
 #endif
-	"shmem",
-	"mapped_file",
-	"dirty",
-	"writeback",
-	"workingset_refault_anon",
-	"workingset_refault_file",
+    "shmem", // 共享内存：用于共享内存的内存页数
+    "mapped_file", // 映射文件：映射到进程地址空间的文件页数
+    "dirty", // 脏页：已修改但尚未写回到磁盘的内存页数
+    "writeback", // 回写：正在写回到磁盘的内存页数
+    "workingset_refault_anon", // 工作集匿名重引用：匿名页在工作集中被重引用的次数
+    "workingset_refault_file", // 工作集文件重引用：文件页在工作集中被重引用的次数
 #ifdef CONFIG_SWAP
-	"swap",
-	"swapcached",
+    "swap", // 交换内存：已交换出去的内存页数
+    "swapcached", // 交换缓存：已交换出去但仍在交换缓存中的内存页数
 #endif
 };
 
 /* Universal VM events cgroup1 shows, original sort order */
+// cgroup1 显示的通用 VM 事件，原始排序顺序
 static const unsigned int memcg1_events[] = {
-	PGPGIN,
-	PGPGOUT,
-	PGFAULT,
-	PGMAJFAULT,
+    PGPGIN, // 页面调入：从磁盘或交换空间读取页面到内存的次数
+    PGPGOUT, // 页面调出：将页面从内存写回到磁盘或交换空间的次数
+    PGFAULT, // 页面错误：进程访问未映射到物理内存的虚拟地址时发生的次数
+    PGMAJFAULT, // 重大页面错误：需要从磁盘或交换空间读取页面以满足进程访问的页面错误次数
 };
 
 void memcg1_stat_format(struct mem_cgroup *memcg, struct seq_buf *s)

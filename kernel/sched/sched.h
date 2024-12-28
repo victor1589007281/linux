@@ -404,89 +404,97 @@ extern struct list_head task_groups;
 
 struct cfs_bandwidth {
 #ifdef CONFIG_CFS_BANDWIDTH
-	raw_spinlock_t		lock;
-	ktime_t			period;
-	u64			quota;
-	u64			runtime;
-	u64			burst;
-	u64			runtime_snap;
-	s64			hierarchical_quota;
+    raw_spinlock_t		lock; // 自旋锁
+    ktime_t			period; // 周期
+    u64			quota; // 配额
+    u64			runtime; // 运行时间
+    u64			burst; // 突发
+    u64			runtime_snap; // 运行时间快照
+    s64			hierarchical_quota; // 分层配额
 
-	u8			idle;
-	u8			period_active;
-	u8			slack_started;
-	struct hrtimer		period_timer;
-	struct hrtimer		slack_timer;
-	struct list_head	throttled_cfs_rq;
+    u8			idle; // 空闲
+    u8			period_active; // 周期活动
+    u8			slack_started; // 松弛开始
+    struct hrtimer		period_timer; // 周期定时器
+    struct hrtimer		slack_timer; // 松弛定时器
+    struct list_head	throttled_cfs_rq; // 节流的 CFS 运行队列
 
-	/* Statistics: */
-	int			nr_periods;
-	int			nr_throttled;
-	int			nr_burst;
-	u64			throttled_time;
-	u64			burst_time;
+    /* Statistics: */
+    // 统计数据
+    int			nr_periods; // 周期数
+    int			nr_throttled; // 节流数
+    int			nr_burst; // 突发数
+    u64			throttled_time; // 节流时间
+    u64			burst_time; // 突发时间
 #endif
 };
 
 /* Task group related information */
+// 任务组相关信息
 struct task_group {
-	struct cgroup_subsys_state css;
+    struct cgroup_subsys_state css; // cgroup 子系统状态
 
 #ifdef CONFIG_GROUP_SCHED_WEIGHT
-	/* A positive value indicates that this is a SCHED_IDLE group. */
-	int			idle;
+    /* A positive value indicates that this is a SCHED_IDLE group. */
+    // 正值表示这是一个 SCHED_IDLE 组
+    int idle;
 #endif
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
-	/* schedulable entities of this group on each CPU */
-	struct sched_entity	**se;
-	/* runqueue "owned" by this group on each CPU */
-	struct cfs_rq		**cfs_rq;
-	unsigned long		shares;
-#ifdef	CONFIG_SMP
-	/*
-	 * load_avg can be heavily contended at clock tick time, so put
-	 * it in its own cache-line separated from the fields above which
-	 * will also be accessed at each tick.
-	 */
-	atomic_long_t		load_avg ____cacheline_aligned;
+    /* schedulable entities of this group on each CPU */
+    // 该组在每个 CPU 上的可调度实体
+    struct sched_entity **se;
+    /* runqueue "owned" by this group on each CPU */
+    // 该组在每个 CPU 上“拥有”的运行队列
+    struct cfs_rq **cfs_rq;
+    unsigned long shares; // 共享数
+#ifdef CONFIG_SMP
+    /*
+     * load_avg can be heavily contended at clock tick time, so put
+     * it in its own cache-line separated from the fields above which
+     * will also be accessed at each tick.
+     */
+    // load_avg 在时钟滴答时可能会受到严重争用，因此将其放在自己的缓存行中，与上面的字段分开，这些字段也将在每个滴答时访问。
+    atomic_long_t load_avg ____cacheline_aligned; // 负载平均值
 #endif
 #endif
 
 #ifdef CONFIG_RT_GROUP_SCHED
-	struct sched_rt_entity	**rt_se;
-	struct rt_rq		**rt_rq;
+    struct sched_rt_entity **rt_se; // 实时调度实体
+    struct rt_rq **rt_rq; // 实时运行队列
 
-	struct rt_bandwidth	rt_bandwidth;
+    struct rt_bandwidth rt_bandwidth; // 实时带宽
 #endif
 
 #ifdef CONFIG_EXT_GROUP_SCHED
-	u32			scx_flags;	/* SCX_TG_* */
-	u32			scx_weight;
+    u32 scx_flags;	/* SCX_TG_* */
+    u32 scx_weight;
 #endif
 
-	struct rcu_head		rcu;
-	struct list_head	list;
+    struct rcu_head rcu; // RCU 头
+    struct list_head list; // 列表
 
-	struct task_group	*parent;
-	struct list_head	siblings;
-	struct list_head	children;
+    struct task_group *parent; // 父任务组
+    struct list_head siblings; // 兄弟任务组
+    struct list_head children; // 子任务组
 
 #ifdef CONFIG_SCHED_AUTOGROUP
-	struct autogroup	*autogroup;
+    struct autogroup *autogroup; // 自动组
 #endif
 
-	struct cfs_bandwidth	cfs_bandwidth;
+    struct cfs_bandwidth cfs_bandwidth; // 完全公平调度带宽
 
 #ifdef CONFIG_UCLAMP_TASK_GROUP
-	/* The two decimal precision [%] value requested from user-space */
-	unsigned int		uclamp_pct[UCLAMP_CNT];
-	/* Clamp values requested for a task group */
-	struct uclamp_se	uclamp_req[UCLAMP_CNT];
-	/* Effective clamp values used for a task group */
-	struct uclamp_se	uclamp[UCLAMP_CNT];
+    /* The two decimal precision [%] value requested from user-space */
+    // 用户空间请求的两位小数精度 [%] 值
+    unsigned int uclamp_pct[UCLAMP_CNT];
+    /* Clamp values requested for a task group */
+    // 任务组请求的钳位值
+    struct uclamp_se uclamp_req[UCLAMP_CNT];
+    /* Effective clamp values used for a task group */
+    // 任务组使用的有效钳位值
+    struct uclamp_se uclamp[UCLAMP_CNT];
 #endif
-
 };
 
 #ifdef CONFIG_GROUP_SCHED_WEIGHT
@@ -643,100 +651,117 @@ struct balance_callback {
 };
 
 /* CFS-related fields in a runqueue */
+// 运行队列中与 CFS 相关的字段
 struct cfs_rq {
-	struct load_weight	load;
-	unsigned int		nr_running;
-	unsigned int		h_nr_running;      /* SCHED_{NORMAL,BATCH,IDLE} */
-	unsigned int		idle_nr_running;   /* SCHED_IDLE */
-	unsigned int		idle_h_nr_running; /* SCHED_IDLE */
+    struct load_weight	load; // 负载权重
+    unsigned int		nr_running; // 正在运行的任务数
+    unsigned int		h_nr_running;      /* SCHED_{NORMAL,BATCH,IDLE} */
+    // SCHED_{NORMAL,BATCH,IDLE} 的任务数
+    unsigned int		idle_nr_running;   /* SCHED_IDLE */
+    // SCHED_IDLE 的任务数
+    unsigned int		idle_h_nr_running; /* SCHED_IDLE */
+    // SCHED_IDLE 的任务数
 
-	s64			avg_vruntime;
-	u64			avg_load;
+    s64			avg_vruntime; // 平均虚拟运行时间
+    u64			avg_load; // 平均负载
 
-	u64			min_vruntime;
+    u64			min_vruntime; // 最小虚拟运行时间
 #ifdef CONFIG_SCHED_CORE
-	unsigned int		forceidle_seq;
-	u64			min_vruntime_fi;
+    unsigned int		forceidle_seq; // 强制空闲序列
+    u64			min_vruntime_fi; // 最小虚拟运行时间（强制空闲）
 #endif
 
-	struct rb_root_cached	tasks_timeline;
+    struct rb_root_cached	tasks_timeline; // 任务时间线
 
-	/*
-	 * 'curr' points to currently running entity on this cfs_rq.
-	 * It is set to NULL otherwise (i.e when none are currently running).
-	 */
-	struct sched_entity	*curr;
-	struct sched_entity	*next;
+    /*
+     * 'curr' points to currently running entity on this cfs_rq.
+     * It is set to NULL otherwise (i.e when none are currently running).
+     */
+    // 'curr' 指向当前在此 cfs_rq 上运行的实体。
+    // 否则设置为 NULL（即当前没有运行的实体）。
+    struct sched_entity	*curr;
+    struct sched_entity	*next;
 
 #ifdef CONFIG_SMP
-	/*
-	 * CFS load tracking
-	 */
-	struct sched_avg	avg;
+    /*
+     * CFS load tracking
+     */
+    // CFS 负载跟踪
+    struct sched_avg	avg; // 调度平均值
 #ifndef CONFIG_64BIT
-	u64			last_update_time_copy;
+    u64			last_update_time_copy; // 上次更新时间副本
 #endif
-	struct {
-		raw_spinlock_t	lock ____cacheline_aligned;
-		int		nr;
-		unsigned long	load_avg;
-		unsigned long	util_avg;
-		unsigned long	runnable_avg;
-	} removed;
+    struct {
+        raw_spinlock_t	lock ____cacheline_aligned; // 自旋锁
+        int		nr; // 数量
+        unsigned long	load_avg; // 负载平均值
+        unsigned long	util_avg; // 利用率平均值
+        unsigned long	runnable_avg; // 可运行平均值
+    } removed;
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
-	u64			last_update_tg_load_avg;
-	unsigned long		tg_load_avg_contrib;
-	long			propagate;
-	long			prop_runnable_sum;
+    u64			last_update_tg_load_avg; // 上次更新的任务组负载平均值
+    unsigned long		tg_load_avg_contrib; // 任务组负载平均值贡献
+    long			propagate; // 传播
+    long			prop_runnable_sum; // 传播的可运行总和
 
-	/*
-	 *   h_load = weight * f(tg)
-	 *
-	 * Where f(tg) is the recursive weight fraction assigned to
-	 * this group.
-	 */
-	unsigned long		h_load;
-	u64			last_h_load_update;
-	struct sched_entity	*h_load_next;
+    /*
+     *   h_load = weight * f(tg)
+     *
+     * Where f(tg) is the recursive weight fraction assigned to
+     * this group.
+     */
+    // h_load = weight * f(tg)
+    // 其中 f(tg) 是分配给该组的递归权重分数。
+    unsigned long		h_load; // 负载
+    u64			last_h_load_update; // 上次负载更新
+    struct sched_entity	*h_load_next; // 下一个负载实体
 #endif /* CONFIG_FAIR_GROUP_SCHED */
 #endif /* CONFIG_SMP */
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
-	struct rq		*rq;	/* CPU runqueue to which this cfs_rq is attached */
+    struct rq		*rq;	/* CPU runqueue to which this cfs_rq is attached */
+    // 此 cfs_rq 所附加的 CPU 运行队列
 
-	/*
-	 * leaf cfs_rqs are those that hold tasks (lowest schedulable entity in
-	 * a hierarchy). Non-leaf lrqs hold other higher schedulable entities
-	 * (like users, containers etc.)
-	 *
-	 * leaf_cfs_rq_list ties together list of leaf cfs_rq's in a CPU.
-	 * This list is used during load balance.
-	 */
-	int			on_list;
-	struct list_head	leaf_cfs_rq_list;
-	struct task_group	*tg;	/* group that "owns" this runqueue */
+    /*
+     * leaf cfs_rqs are those that hold tasks (lowest schedulable entity in
+     * a hierarchy). Non-leaf lrqs hold other higher schedulable entities
+     * (like users, containers etc.)
+     *
+     * leaf_cfs_rq_list ties together list of leaf cfs_rq's in a CPU.
+     * This list is used during load balance.
+     */
+    // 叶子 cfs_rq 是那些持有任务的（层次结构中最低的可调度实体）。
+    // 非叶子 lrq 持有其他更高的可调度实体（如用户、容器等）。
+    //
+    // leaf_cfs_rq_list 将 CPU 中的叶子 cfs_rq 列表连接在一起。
+    // 此列表用于负载平衡。
+    int			on_list; // 在列表中
+    struct list_head	leaf_cfs_rq_list; // 叶子 cfs_rq 列表
+    struct task_group	*tg;	/* group that "owns" this runqueue */
+    // “拥有”此运行队列的组
 
-	/* Locally cached copy of our task_group's idle value */
-	int			idle;
+    /* Locally cached copy of our task_group's idle value */
+    // 本地缓存的任务组空闲值副本
+    int			idle;
 
 #ifdef CONFIG_CFS_BANDWIDTH
-	int			runtime_enabled;
-	s64			runtime_remaining;
+    int			runtime_enabled; // 运行时间启用
+    s64			runtime_remaining; // 剩余运行时间
 
-	u64			throttled_pelt_idle;
+    u64			throttled_pelt_idle; // 节流的 PELT 空闲时间
 #ifndef CONFIG_64BIT
-	u64                     throttled_pelt_idle_copy;
+    u64                     throttled_pelt_idle_copy; // 节流的 PELT 空闲时间副本
 #endif
-	u64			throttled_clock;
-	u64			throttled_clock_pelt;
-	u64			throttled_clock_pelt_time;
-	u64			throttled_clock_self;
-	u64			throttled_clock_self_time;
-	int			throttled;
-	int			throttle_count;
-	struct list_head	throttled_list;
-	struct list_head	throttled_csd_list;
+    u64			throttled_clock; // 节流时钟
+    u64			throttled_clock_pelt; // 节流时钟 PELT
+    u64			throttled_clock_pelt_time; // 节流时钟 PELT 时间
+    u64			throttled_clock_self; // 节流时钟自身
+    u64			throttled_clock_self_time; // 节流时钟自身时间
+    int			throttled; // 节流
+    int			throttle_count; // 节流计数
+    struct list_head	throttled_list; // 节流列表
+    struct list_head	throttled_csd_list; // 节流 CSD 列表
 #endif /* CONFIG_CFS_BANDWIDTH */
 #endif /* CONFIG_FAIR_GROUP_SCHED */
 };
@@ -1092,211 +1117,232 @@ DECLARE_STATIC_KEY_FALSE(sched_uclamp_used);
  * (such as the load balancing or the thread migration code), lock
  * acquire operations must be ordered by ascending &runqueue.
  */
+// 这是主要的、每个 CPU 的运行队列数据结构。
+// 锁定规则：那些想要锁定多个运行队列的地方（例如负载平衡或线程迁移代码），锁定获取操作必须按升序排列 &runqueue。
 struct rq {
-	/* runqueue lock: */
-	raw_spinlock_t		__lock;
+    /* runqueue lock: */
+    // 运行队列锁
+    raw_spinlock_t		__lock;
 
-	unsigned int		nr_running;
+    unsigned int		nr_running; // 正在运行的任务数
 #ifdef CONFIG_NUMA_BALANCING
-	unsigned int		nr_numa_running;
-	unsigned int		nr_preferred_running;
-	unsigned int		numa_migrate_on;
+    unsigned int		nr_numa_running; // NUMA 正在运行的任务数
+    unsigned int		nr_preferred_running; // 首选正在运行的任务数
+    unsigned int		numa_migrate_on; // NUMA 迁移
 #endif
 #ifdef CONFIG_NO_HZ_COMMON
 #ifdef CONFIG_SMP
-	unsigned long		last_blocked_load_update_tick;
-	unsigned int		has_blocked_load;
-	call_single_data_t	nohz_csd;
+    unsigned long		last_blocked_load_update_tick; // 上次阻塞负载更新时间
+    unsigned int		has_blocked_load; // 是否有阻塞负载
+    call_single_data_t	nohz_csd; // nohz 调用单数据
 #endif /* CONFIG_SMP */
-	unsigned int		nohz_tick_stopped;
-	atomic_t		nohz_flags;
+    unsigned int		nohz_tick_stopped; // nohz 时钟停止
+    atomic_t		nohz_flags; // nohz 标志
 #endif /* CONFIG_NO_HZ_COMMON */
 
 #ifdef CONFIG_SMP
-	unsigned int		ttwu_pending;
+    unsigned int		ttwu_pending; // 待处理的唤醒任务
 #endif
-	u64			nr_switches;
+    u64			nr_switches; // 切换次数
 
 #ifdef CONFIG_UCLAMP_TASK
-	/* Utilization clamp values based on CPU's RUNNABLE tasks */
-	struct uclamp_rq	uclamp[UCLAMP_CNT] ____cacheline_aligned;
-	unsigned int		uclamp_flags;
+    /* Utilization clamp values based on CPU's RUNNABLE tasks */
+    // 基于 CPU 可运行任务的利用率钳位值
+    struct uclamp_rq	uclamp[UCLAMP_CNT] ____cacheline_aligned;
+    unsigned int		uclamp_flags;
 #define UCLAMP_FLAG_IDLE 0x01
 #endif
 
-	struct cfs_rq		cfs;
-	struct rt_rq		rt;
-	struct dl_rq		dl;
+    struct cfs_rq		cfs; // 完全公平调度运行队列
+    struct rt_rq		rt; // 实时运行队列
+    struct dl_rq		dl; // 调度截止时间运行队列
 #ifdef CONFIG_SCHED_CLASS_EXT
-	struct scx_rq		scx;
+    struct scx_rq		scx; // 扩展调度运行队列
 #endif
 
-	struct sched_dl_entity	fair_server;
+    struct sched_dl_entity	fair_server; // 公平调度实体
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
-	/* list of leaf cfs_rq on this CPU: */
-	struct list_head	leaf_cfs_rq_list;
-	struct list_head	*tmp_alone_branch;
+    /* list of leaf cfs_rq on this CPU: */
+    // 此 CPU 上的叶子 cfs_rq 列表
+    struct list_head	leaf_cfs_rq_list;
+    struct list_head	*tmp_alone_branch;
 #endif /* CONFIG_FAIR_GROUP_SCHED */
 
-	/*
-	 * This is part of a global counter where only the total sum
-	 * over all CPUs matters. A task can increase this counter on
-	 * one CPU and if it got migrated afterwards it may decrease
-	 * it on another CPU. Always updated under the runqueue lock:
-	 */
-	unsigned int		nr_uninterruptible;
+    /*
+     * This is part of a global counter where only the total sum
+     * over all CPUs matters. A task can increase this counter on
+     * one CPU and if it got migrated afterwards it may decrease
+     * it on another CPU. Always updated under the runqueue lock:
+     */
+    // 这是全局计数器的一部分，其中只有所有 CPU 的总和才重要。
+    // 一个任务可以在一个 CPU 上增加这个计数器，如果它随后被迁移，它可能会在另一个 CPU 上减少它。
+    // 始终在运行队列锁下更新：
+    unsigned int		nr_uninterruptible; // 不可中断的任务数
 
-	struct task_struct __rcu	*curr;
-	struct sched_dl_entity	*dl_server;
-	struct task_struct	*idle;
-	struct task_struct	*stop;
-	unsigned long		next_balance;
-	struct mm_struct	*prev_mm;
+    struct task_struct __rcu	*curr; // 当前任务
+    struct sched_dl_entity	*dl_server; // 调度截止时间服务器
+    struct task_struct	*idle; // 空闲任务
+    struct task_struct	*stop; // 停止任务
+    unsigned long		next_balance; // 下次平衡时间
+    struct mm_struct	*prev_mm; // 上一个内存管理结构
 
-	unsigned int		clock_update_flags;
-	u64			clock;
-	/* Ensure that all clocks are in the same cache line */
-	u64			clock_task ____cacheline_aligned;
-	u64			clock_pelt;
-	unsigned long		lost_idle_time;
-	u64			clock_pelt_idle;
-	u64			clock_idle;
+    unsigned int		clock_update_flags; // 时钟更新标志
+    u64			clock; // 时钟
+    /* Ensure that all clocks are in the same cache line */
+    // 确保所有时钟在同一个缓存行中
+    u64			clock_task ____cacheline_aligned; // 任务时钟
+    u64			clock_pelt; // PELT 时钟
+    unsigned long		lost_idle_time; // 丢失的空闲时间
+    u64			clock_pelt_idle; // PELT 空闲时钟
+    u64			clock_idle; // 空闲时钟
 #ifndef CONFIG_64BIT
-	u64			clock_pelt_idle_copy;
-	u64			clock_idle_copy;
+    u64			clock_pelt_idle_copy; // PELT 空闲时钟副本
+    u64			clock_idle_copy; // 空闲时钟副本
 #endif
 
-	atomic_t		nr_iowait;
+    atomic_t		nr_iowait; // IO 等待任务数
 
 #ifdef CONFIG_SCHED_DEBUG
-	u64 last_seen_need_resched_ns;
-	int ticks_without_resched;
+    u64 last_seen_need_resched_ns; // 上次看到需要重新调度的时间（纳秒）
+    int ticks_without_resched; // 无重新调度的滴答数
 #endif
 
 #ifdef CONFIG_MEMBARRIER
-	int membarrier_state;
+    int membarrier_state; // 内存屏障状态
 #endif
 
 #ifdef CONFIG_SMP
-	struct root_domain		*rd;
-	struct sched_domain __rcu	*sd;
+    struct root_domain		*rd; // 根域
+    struct sched_domain __rcu	*sd; // 调度域
 
-	unsigned long		cpu_capacity;
+    unsigned long		cpu_capacity; // CPU 容量
 
-	struct balance_callback *balance_callback;
+    struct balance_callback *balance_callback; // 平衡回调
 
-	unsigned char		nohz_idle_balance;
-	unsigned char		idle_balance;
+    unsigned char		nohz_idle_balance; // nohz 空闲平衡
+    unsigned char		idle_balance; // 空闲平衡
 
-	unsigned long		misfit_task_load;
+    unsigned long		misfit_task_load; // 不适合任务负载
 
-	/* For active balancing */
-	int			active_balance;
-	int			push_cpu;
-	struct cpu_stop_work	active_balance_work;
+    /* For active balancing */
+    // 用于主动平衡
+    int			active_balance; // 主动平衡
+    int			push_cpu; // 推送 CPU
+    struct cpu_stop_work	active_balance_work; // 主动平衡工作
 
-	/* CPU of this runqueue: */
-	int			cpu;
-	int			online;
+    /* CPU of this runqueue: */
+    // 此运行队列的 CPU
+    int			cpu; // CPU
+    int			online; // 在线
 
-	struct list_head cfs_tasks;
+    struct list_head cfs_tasks; // 完全公平调度任务列表
 
-	struct sched_avg	avg_rt;
-	struct sched_avg	avg_dl;
+    struct sched_avg	avg_rt; // 实时调度平均值
+    struct sched_avg	avg_dl; // 调度截止时间平均值
 #ifdef CONFIG_HAVE_SCHED_AVG_IRQ
-	struct sched_avg	avg_irq;
+    struct sched_avg	avg_irq; // 中断调度平均值
 #endif
 #ifdef CONFIG_SCHED_HW_PRESSURE
-	struct sched_avg	avg_hw;
+    struct sched_avg	avg_hw; // 硬件调度平均值
 #endif
-	u64			idle_stamp;
-	u64			avg_idle;
+    u64			idle_stamp; // 空闲时间戳
+    u64			avg_idle; // 平均空闲时间
 
-	/* This is used to determine avg_idle's max value */
-	u64			max_idle_balance_cost;
+    /* This is used to determine avg_idle's max value */
+    // 这用于确定 avg_idle 的最大值
+    u64			max_idle_balance_cost; // 最大空闲平衡成本
 
 #ifdef CONFIG_HOTPLUG_CPU
-	struct rcuwait		hotplug_wait;
+    struct rcuwait		hotplug_wait; // 热插拔等待
 #endif
 #endif /* CONFIG_SMP */
 
 #ifdef CONFIG_IRQ_TIME_ACCOUNTING
-	u64			prev_irq_time;
-	u64			psi_irq_time;
+    u64			prev_irq_time; // 上次中断时间
+    u64			psi_irq_time; // PSI 中断时间
 #endif
 #ifdef CONFIG_PARAVIRT
-	u64			prev_steal_time;
+    u64			prev_steal_time; // 上次窃取时间
 #endif
 #ifdef CONFIG_PARAVIRT_TIME_ACCOUNTING
-	u64			prev_steal_time_rq;
+    u64			prev_steal_time_rq; // 上次运行队列窃取时间
 #endif
 
-	/* calc_load related fields */
-	unsigned long		calc_load_update;
-	long			calc_load_active;
+    /* calc_load related fields */
+    // 计算负载相关字段
+    unsigned long		calc_load_update; // 计算负载更新
+    long			calc_load_active; // 计算负载活动
 
 #ifdef CONFIG_SCHED_HRTICK
 #ifdef CONFIG_SMP
-	call_single_data_t	hrtick_csd;
+    call_single_data_t	hrtick_csd; // 高分辨率时钟滴答调用单数据
 #endif
-	struct hrtimer		hrtick_timer;
-	ktime_t			hrtick_time;
+    struct hrtimer		hrtick_timer; // 高分辨率时钟滴答定时器
+    ktime_t			hrtick_time; // 高分辨率时钟滴答时间
 #endif
 
 #ifdef CONFIG_SCHEDSTATS
-	/* latency stats */
-	struct sched_info	rq_sched_info;
-	unsigned long long	rq_cpu_time;
+    /* latency stats */
+    // 延迟统计
+    struct sched_info	rq_sched_info; // 运行队列调度信息
+    unsigned long long	rq_cpu_time; // 运行队列 CPU 时间
 
-	/* sys_sched_yield() stats */
-	unsigned int		yld_count;
+    /* sys_sched_yield() stats */
+    // sys_sched_yield() 统计
+    unsigned int		yld_count; // 让出计数
 
-	/* schedule() stats */
-	unsigned int		sched_count;
-	unsigned int		sched_goidle;
+    /* schedule() stats */
+    // schedule() 统计
+    unsigned int		sched_count; // 调度计数
+    unsigned int		sched_goidle; // 调度空闲
 
-	/* try_to_wake_up() stats */
-	unsigned int		ttwu_count;
-	unsigned int		ttwu_local;
+    /* try_to_wake_up() stats */
+    // try_to_wake_up() 统计
+    unsigned int		ttwu_count; // 唤醒计数
+    unsigned int		ttwu_local; // 本地唤醒计数
 #endif
 
 #ifdef CONFIG_CPU_IDLE
-	/* Must be inspected within a RCU lock section */
-	struct cpuidle_state	*idle_state;
+    /* Must be inspected within a RCU lock section */
+    // 必须在 RCU 锁定部分内检查
+    struct cpuidle_state	*idle_state; // 空闲状态
 #endif
 
 #ifdef CONFIG_SMP
-	unsigned int		nr_pinned;
+    unsigned int		nr_pinned; // 固定任务数
 #endif
-	unsigned int		push_busy;
-	struct cpu_stop_work	push_work;
+    unsigned int		push_busy; // 推送忙
+    struct cpu_stop_work	push_work; // 推送工作
 
 #ifdef CONFIG_SCHED_CORE
-	/* per rq */
-	struct rq		*core;
-	struct task_struct	*core_pick;
-	struct sched_dl_entity	*core_dl_server;
-	unsigned int		core_enabled;
-	unsigned int		core_sched_seq;
-	struct rb_root		core_tree;
+    /* per rq */
+    // 每个运行队列
+    struct rq		*core; // 核心
+    struct task_struct	*core_pick; // 核心选择
+    struct sched_dl_entity	*core_dl_server; // 核心调度截止时间服务器
+    unsigned int		core_enabled; // 核心启用
+    unsigned int		core_sched_seq; // 核心调度序列
+    struct rb_root		core_tree; // 核心树
 
-	/* shared state -- careful with sched_core_cpu_deactivate() */
-	unsigned int		core_task_seq;
-	unsigned int		core_pick_seq;
-	unsigned long		core_cookie;
-	unsigned int		core_forceidle_count;
-	unsigned int		core_forceidle_seq;
-	unsigned int		core_forceidle_occupation;
-	u64			core_forceidle_start;
+    /* shared state -- careful with sched_core_cpu_deactivate() */
+    // 共享状态 -- 小心使用 sched_core_cpu_deactivate()
+    unsigned int		core_task_seq; // 核心任务序列
+    unsigned int		core_pick_seq; // 核心选择序列
+    unsigned long		core_cookie; // 核心 cookie
+    unsigned int		core_forceidle_count; // 核心强制空闲计数
+    unsigned int		core_forceidle_seq; // 核心强制空闲序列
+    unsigned int		core_forceidle_occupation; // 核心强制空闲占用
+    u64			core_forceidle_start; // 核心强制空闲开始时间
 #endif
 
-	/* Scratch cpumask to be temporarily used under rq_lock */
-	cpumask_var_t		scratch_mask;
+    /* Scratch cpumask to be temporarily used under rq_lock */
+    // 在 rq_lock 下临时使用的 cpumask
+    cpumask_var_t		scratch_mask; // 临时掩码
 
 #if defined(CONFIG_CFS_BANDWIDTH) && defined(CONFIG_SMP)
-	call_single_data_t	cfsb_csd;
-	struct list_head	cfsb_csd_list;
+    call_single_data_t	cfsb_csd; // 完全公平调度带宽调用单数据
+    struct list_head	cfsb_csd_list; // 完全公平调度带宽调用单数据列表
 #endif
 };
 

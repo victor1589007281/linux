@@ -210,12 +210,13 @@ static u16 have_canfork_callback __read_mostly;
 static bool have_favordynmods __ro_after_init = IS_ENABLED(CONFIG_CGROUP_FAVOR_DYNMODS);
 
 /* cgroup namespace for init task */
+// init 任务的 cgroup 命名空间
 struct cgroup_namespace init_cgroup_ns = {
-	.ns.count	= REFCOUNT_INIT(2),
-	.user_ns	= &init_user_ns,
-	.ns.ops		= &cgroupns_operations,
-	.ns.inum	= PROC_CGROUP_INIT_INO,
-	.root_cset	= &init_css_set,
+    .ns.count	= REFCOUNT_INIT(2), // 引用计数初始化为 2
+    .user_ns	= &init_user_ns, // 用户命名空间
+    .ns.ops		= &cgroupns_operations, // cgroup 命名空间操作
+    .ns.inum	= PROC_CGROUP_INIT_INO, // 初始化 inode 编号
+    .root_cset	= &init_css_set, // 根 css 集合
 };
 
 static struct file_system_type cgroup2_fs_type;

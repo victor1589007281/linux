@@ -28,57 +28,66 @@ struct ipc_ids {
 	struct rhashtable key_ht;
 };
 
+//隔离System V IPC对象和POSIX消息队列
 struct ipc_namespace {
-	struct ipc_ids	ids[3];
+    struct ipc_ids	ids[3]; // IPC 标识符数组
 
-	int		sem_ctls[4];
-	int		used_sems;
+    int		sem_ctls[4]; // 信号量控制数组
+    int		used_sems; // 使用的信号量数量
 
-	unsigned int	msg_ctlmax;
-	unsigned int	msg_ctlmnb;
-	unsigned int	msg_ctlmni;
-	struct percpu_counter percpu_msg_bytes;
-	struct percpu_counter percpu_msg_hdrs;
+    unsigned int	msg_ctlmax; // 消息队列的最大消息数
+    unsigned int	msg_ctlmnb; // 消息队列的最大字节数
+    unsigned int	msg_ctlmni; // 最大消息队列数
+    struct percpu_counter percpu_msg_bytes; // 每 CPU 消息字节计数器
+    struct percpu_counter percpu_msg_hdrs; // 每 CPU 消息头计数器
 
-	size_t		shm_ctlmax;
-	size_t		shm_ctlall;
-	unsigned long	shm_tot;
-	int		shm_ctlmni;
-	/*
-	 * Defines whether IPC_RMID is forced for _all_ shm segments regardless
-	 * of shmctl()
-	 */
-	int		shm_rmid_forced;
+    size_t		shm_ctlmax; // 共享内存的最大大小
+    size_t		shm_ctlall; // 共享内存的总大小
+    unsigned long	shm_tot; // 共享内存的总数
+    int		shm_ctlmni; // 最大共享内存段数
+    /*
+     * Defines whether IPC_RMID is forced for _all_ shm segments regardless
+     * of shmctl()
+     */
+    // 定义是否强制对所有共享内存段执行 IPC_RMID，而不考虑 shmctl()
+    int		shm_rmid_forced;
 
-	struct notifier_block ipcns_nb;
+    struct notifier_block ipcns_nb; // IPC 命名空间通知块
 
-	/* The kern_mount of the mqueuefs sb.  We take a ref on it */
-	struct vfsmount	*mq_mnt;
+    /* The kern_mount of the mqueuefs sb.  We take a ref on it */
+    // mqueuefs 超级块的内核挂载。我们对此引用。
+    struct vfsmount	*mq_mnt;
 
-	/* # queues in this ns, protected by mq_lock */
-	unsigned int    mq_queues_count;
+    /* # queues in this ns, protected by mq_lock */
+    // 此命名空间中的队列数，由 mq_lock 保护
+    unsigned int    mq_queues_count;
 
-	/* next fields are set through sysctl */
-	unsigned int    mq_queues_max;   /* initialized to DFLT_QUEUESMAX */
-	unsigned int    mq_msg_max;      /* initialized to DFLT_MSGMAX */
-	unsigned int    mq_msgsize_max;  /* initialized to DFLT_MSGSIZEMAX */
-	unsigned int    mq_msg_default;
-	unsigned int    mq_msgsize_default;
+    /* next fields are set through sysctl */
+    // 下一个字段通过 sysctl 设置
+    unsigned int    mq_queues_max;   /* initialized to DFLT_QUEUESMAX */
+    // 最大队列数，初始化为 DFLT_QUEUESMAX
+    unsigned int    mq_msg_max;      /* initialized to DFLT_MSGMAX */
+    // 最大消息数，初始化为 DFLT_MSGMAX
+    unsigned int    mq_msgsize_max;  /* initialized to DFLT_MSGSIZEMAX */
+    // 最大消息大小，初始化为 DFLT_MSGSIZEMAX
+    unsigned int    mq_msg_default; // 默认消息数
+    unsigned int    mq_msgsize_default; // 默认消息大小
 
-	struct ctl_table_set	mq_set;
-	struct ctl_table_header	*mq_sysctls;
+    struct ctl_table_set	mq_set; // 消息队列控制表集合
+    struct ctl_table_header	*mq_sysctls; // 消息队列 sysctl 表头
 
-	struct ctl_table_set	ipc_set;
-	struct ctl_table_header	*ipc_sysctls;
+    struct ctl_table_set	ipc_set; // IPC 控制表集合
+    struct ctl_table_header	*ipc_sysctls; // IPC sysctl 表头
 
-	/* user_ns which owns the ipc ns */
-	struct user_namespace *user_ns;
-	struct ucounts *ucounts;
+    /* user_ns which owns the ipc ns */
+    // 拥有此 IPC 命名空间的用户命名空间
+    struct user_namespace *user_ns;
+    struct ucounts *ucounts; // 用户计数
 
-	struct llist_node mnt_llist;
+    struct llist_node mnt_llist; // 挂载链表节点
 
-	struct ns_common ns;
-} __randomize_layout;
+    struct ns_common ns; // 命名空间公共部分
+} __randomize_layout; // 随机化布局
 
 extern struct ipc_namespace init_ipc_ns;
 extern spinlock_t mq_lock;

@@ -20,14 +20,15 @@ struct timens_offsets {
 };
 
 struct time_namespace {
-	struct user_namespace	*user_ns;
-	struct ucounts		*ucounts;
-	struct ns_common	ns;
-	struct timens_offsets	offsets;
-	struct page		*vvar_page;
-	/* If set prevents changing offsets after any task joined namespace. */
-	bool			frozen_offsets;
-} __randomize_layout;
+    struct user_namespace	*user_ns; // 用户命名空间
+    struct ucounts		*ucounts; // 用户计数
+    struct ns_common	ns; // 命名空间公共部分
+    struct timens_offsets	offsets; // 时间偏移
+    struct page		*vvar_page; // vvar 页面
+    /* If set prevents changing offsets after any task joined namespace. */
+    // 如果设置，在任何任务加入命名空间后防止更改偏移量。
+    bool			frozen_offsets; // 冻结偏移量
+} __randomize_layout; // 随机化布局
 
 extern struct time_namespace init_time_ns;
 

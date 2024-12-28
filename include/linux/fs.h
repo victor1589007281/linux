@@ -629,122 +629,136 @@ is_uncached_acl(struct posix_acl *acl)
  * the RCU path lookup and 'stat' data) fields at the beginning
  * of the 'struct inode'
  */
+// 将大多数只读且经常访问的字段（特别是用于 RCU 路径查找和 'stat' 数据）放在 'struct inode' 的开头
 struct inode {
-	umode_t			i_mode;
-	unsigned short		i_opflags;
-	kuid_t			i_uid;
-	kgid_t			i_gid;
-	unsigned int		i_flags;
+    umode_t			i_mode; // 文件模式
+    unsigned short		i_opflags; // 操作标志
+    kuid_t			i_uid; // 用户 ID
+    kgid_t			i_gid; // 组 ID
+    unsigned int		i_flags; // 标志
 
 #ifdef CONFIG_FS_POSIX_ACL
-	struct posix_acl	*i_acl;
-	struct posix_acl	*i_default_acl;
+    struct posix_acl	*i_acl; // POSIX ACL
+    struct posix_acl	*i_default_acl; // 默认 POSIX ACL
 #endif
 
-	const struct inode_operations	*i_op;
-	struct super_block	*i_sb;
-	struct address_space	*i_mapping;
+    const struct inode_operations	*i_op; // inode 操作
+    struct super_block	*i_sb; // 超级块
+    struct address_space	*i_mapping; // 地址空间
 
 #ifdef CONFIG_SECURITY
-	void			*i_security;
+    void			*i_security; // 安全性
 #endif
 
-	/* Stat data, not accessed from path walking */
-	unsigned long		i_ino;
-	/*
-	 * Filesystems may only read i_nlink directly.  They shall use the
-	 * following functions for modification:
-	 *
-	 *    (set|clear|inc|drop)_nlink
-	 *    inode_(inc|dec)_link_count
-	 */
-	union {
-		const unsigned int i_nlink;
-		unsigned int __i_nlink;
-	};
-	dev_t			i_rdev;
-	loff_t			i_size;
-	time64_t		i_atime_sec;
-	time64_t		i_mtime_sec;
-	time64_t		i_ctime_sec;
-	u32			i_atime_nsec;
-	u32			i_mtime_nsec;
-	u32			i_ctime_nsec;
-	u32			i_generation;
-	spinlock_t		i_lock;	/* i_blocks, i_bytes, maybe i_size */
-	unsigned short          i_bytes;
-	u8			i_blkbits;
-	enum rw_hint		i_write_hint;
-	blkcnt_t		i_blocks;
+    /* Stat data, not accessed from path walking */
+    // 统计数据，不从路径遍历中访问
+    unsigned long		i_ino; // inode 编号
+    /*
+     * Filesystems may only read i_nlink directly.  They shall use the
+     * following functions for modification:
+     *
+     *    (set|clear|inc|drop)_nlink
+     *    inode_(inc|dec)_link_count
+     */
+    // 文件系统只能直接读取 i_nlink。它们应使用以下函数进行修改：
+    union {
+        const unsigned int i_nlink; // 链接数
+        unsigned int __i_nlink; // 内部链接数
+    };
+    dev_t			i_rdev; // 设备号
+    loff_t			i_size; // 文件大小
+    time64_t		i_atime_sec; // 访问时间（秒）
+    time64_t		i_mtime_sec; // 修改时间（秒）
+    time64_t		i_ctime_sec; // 状态更改时间（秒）
+    u32			i_atime_nsec; // 访问时间（纳秒）
+    u32			i_mtime_nsec; // 修改时间（纳秒）
+    u32			i_ctime_nsec; // 状态更改时间（纳秒）
+    u32			i_generation; // 生成号
+    spinlock_t		i_lock;	/* i_blocks, i_bytes, maybe i_size */
+    // 自旋锁，用于保护 i_blocks, i_bytes, 可能还有 i_size
+    unsigned short          i_bytes; // 字节数
+    u8			i_blkbits; // 块大小的位数
+    enum rw_hint		i_write_hint; // 写入提示
+    blkcnt_t		i_blocks; // 块数
 
 #ifdef __NEED_I_SIZE_ORDERED
-	seqcount_t		i_size_seqcount;
+    seqcount_t		i_size_seqcount; // 大小序列计数
 #endif
 
-	/* Misc */
-	u32			i_state;
-	/* 32-bit hole */
-	struct rw_semaphore	i_rwsem;
+    /* Misc */
+    u32			i_state; // 状态
+    /* 32-bit hole */
+    struct rw_semaphore	i_rwsem; // 读写信号量
 
-	unsigned long		dirtied_when;	/* jiffies of first dirtying */
-	unsigned long		dirtied_time_when;
+    unsigned long		dirtied_when;	/* jiffies of first dirtying */
+    // 第一次变脏的时间（jiffies）
+    unsigned long		dirtied_time_when; // 变脏的时间
 
-	struct hlist_node	i_hash;
-	struct list_head	i_io_list;	/* backing dev IO list */
+    struct hlist_node	i_hash; // 哈希链表节点
+    struct list_head	i_io_list;	/* backing dev IO list */
+    // 支持设备 IO 列表
 #ifdef CONFIG_CGROUP_WRITEBACK
-	struct bdi_writeback	*i_wb;		/* the associated cgroup wb */
+    struct bdi_writeback	*i_wb;		/* the associated cgroup wb */
+    // 关联的 cgroup 写回
 
-	/* foreign inode detection, see wbc_detach_inode() */
-	int			i_wb_frn_winner;
-	u16			i_wb_frn_avg_time;
-	u16			i_wb_frn_history;
+    /* foreign inode detection, see wbc_detach_inode() */
+    // 外部 inode 检测，参见 wbc_detach_inode()
+    int			i_wb_frn_winner; // 写回胜者
+    u16			i_wb_frn_avg_time; // 写回平均时间
+    u16			i_wb_frn_history; // 写回历史
 #endif
-	struct list_head	i_lru;		/* inode LRU list */
-	struct list_head	i_sb_list;
-	struct list_head	i_wb_list;	/* backing dev writeback list */
-	union {
-		struct hlist_head	i_dentry;
-		struct rcu_head		i_rcu;
-	};
-	atomic64_t		i_version;
-	atomic64_t		i_sequence; /* see futex */
-	atomic_t		i_count;
-	atomic_t		i_dio_count;
-	atomic_t		i_writecount;
+    struct list_head	i_lru;		/* inode LRU list */
+    // inode LRU 列表
+    struct list_head	i_sb_list; // 超级块列表
+    struct list_head	i_wb_list;	/* backing dev writeback list */
+    // 支持设备写回列表
+    union {
+        struct hlist_head	i_dentry; // dentry 链表头
+        struct rcu_head		i_rcu; // RCU 头
+    };
+    atomic64_t		i_version; // 版本号
+    atomic64_t		i_sequence; /* see futex */
+    // 序列号，参见 futex
+    atomic_t		i_count; // 引用计数
+    atomic_t		i_dio_count; // 直接 IO 计数
+    atomic_t		i_writecount; // 写入计数
 #if defined(CONFIG_IMA) || defined(CONFIG_FILE_LOCKING)
-	atomic_t		i_readcount; /* struct files open RO */
+    atomic_t		i_readcount; /* struct files open RO */
+    // 读取计数，表示以只读方式打开的文件数
 #endif
-	union {
-		const struct file_operations	*i_fop;	/* former ->i_op->default_file_ops */
-		void (*free_inode)(struct inode *);
-	};
-	struct file_lock_context	*i_flctx;
-	struct address_space	i_data;
-	struct list_head	i_devices;
-	union {
-		struct pipe_inode_info	*i_pipe;
-		struct cdev		*i_cdev;
-		char			*i_link;
-		unsigned		i_dir_seq;
-	};
-
+    union {
+        const struct file_operations	*i_fop;	/* former ->i_op->default_file_ops */
+        // 文件操作
+        void (*free_inode)(struct inode *); // 释放 inode 的函数指针
+    };
+    struct file_lock_context	*i_flctx; // 文件锁上下文
+    struct address_space	i_data; // 数据地址空间
+    struct list_head	i_devices; // 设备列表
+    union {
+        struct pipe_inode_info	*i_pipe; // 管道 inode 信息
+        struct cdev		*i_cdev; // 字符设备
+        char			*i_link; // 符号链接
+        unsigned		i_dir_seq; // 目录序列号
+    };
 
 #ifdef CONFIG_FSNOTIFY
-	__u32			i_fsnotify_mask; /* all events this inode cares about */
-	/* 32-bit hole reserved for expanding i_fsnotify_mask */
-	struct fsnotify_mark_connector __rcu	*i_fsnotify_marks;
+    __u32			i_fsnotify_mask; /* all events this inode cares about */
+    // 此 inode 关心的所有事件
+    /* 32-bit hole reserved for expanding i_fsnotify_mask */
+    struct fsnotify_mark_connector __rcu	*i_fsnotify_marks; // fsnotify 标记连接器
 #endif
 
 #ifdef CONFIG_FS_ENCRYPTION
-	struct fscrypt_inode_info	*i_crypt_info;
+    struct fscrypt_inode_info	*i_crypt_info; // 文件系统加密信息
 #endif
 
 #ifdef CONFIG_FS_VERITY
-	struct fsverity_info	*i_verity_info;
+    struct fsverity_info	*i_verity_info; // 文件系统完整性信息
 #endif
 
-	void			*i_private; /* fs or device private pointer */
-} __randomize_layout;
+    void			*i_private; /* fs or device private pointer */
+    // 文件系统或设备私有指针
+} __randomize_layout; // 随机化布局
 
 /*
  * Get bit address from inode->i_state to use with wait_var_event()
@@ -1029,44 +1043,72 @@ static inline int ra_has_index(struct file_ra_state *ra, pgoff_t index)
  * @f_ra: file's readahead state
  * @f_freeptr: Pointer used by SLAB_TYPESAFE_BY_RCU file cache (don't touch.)
  */
+// struct file - 表示一个文件
+// @f_count: 引用计数
+// @f_lock: 保护 f_ep 和 f_flags。不能在 IRQ 上下文中获取。
+// @f_mode: 经常在热路径中使用的 FMODE_* 标志
+// @f_op: 文件操作
+// @f_mapping: 可缓存、可映射对象的内容。
+// @private_data: 文件系统或驱动程序特定数据
+// @f_inode: 缓存的 inode
+// @f_flags: 文件标志
+// @f_iocb_flags: iocb 标志
+// @f_cred: 创建者/打开者的存储凭据
+// @f_path: 文件路径
+// @f_pos_lock: 保护文件位置的锁
+// @f_pipe: 特定于管道
+// @f_pos: 文件位置
+// @f_security: 此文件的 LSM 安全上下文
+// @f_owner: 文件所有者
+// @f_wb_err: 写回错误
+// @f_sb_err: 每个超级块的写回错误
+// @f_ep: 此文件的所有 epoll 钩子的链接
+// @f_task_work: 任务工作入口点
+// @f_llist: 工作队列入口点
+// @f_ra: 文件的预读状态
+// @f_freeptr: 由 SLAB_TYPESAFE_BY_RCU 文件缓存使用的指针（不要触摸）。
+
 struct file {
-	atomic_long_t			f_count;
-	spinlock_t			f_lock;
-	fmode_t				f_mode;
-	const struct file_operations	*f_op;
-	struct address_space		*f_mapping;
-	void				*private_data;
-	struct inode			*f_inode;
-	unsigned int			f_flags;
-	unsigned int			f_iocb_flags;
-	const struct cred		*f_cred;
-	/* --- cacheline 1 boundary (64 bytes) --- */
-	struct path			f_path;
-	union {
-		/* regular files (with FMODE_ATOMIC_POS) and directories */
-		struct mutex		f_pos_lock;
-		/* pipes */
-		u64			f_pipe;
-	};
-	loff_t				f_pos;
+    atomic_long_t			f_count; // 引用计数
+    spinlock_t			f_lock; // 自旋锁
+    fmode_t				f_mode; // 文件模式
+    const struct file_operations	*f_op; // 文件操作
+    struct address_space		*f_mapping; // 地址空间
+    void				*private_data; // 私有数据
+    struct inode			*f_inode; // 缓存的 inode
+    unsigned int			f_flags; // 文件标志
+    unsigned int			f_iocb_flags; // iocb 标志
+    const struct cred		*f_cred; // 存储的凭据
+    /* --- cacheline 1 boundary (64 bytes) --- */
+    struct path			f_path; // 文件路径
+    union {
+        /* regular files (with FMODE_ATOMIC_POS) and directories */
+        // 常规文件（具有 FMODE_ATOMIC_POS）和目录
+        struct mutex		f_pos_lock; // 位置锁
+        /* pipes */
+        // 管道
+        u64			f_pipe; // 管道
+    };
+    loff_t				f_pos; // 文件位置
 #ifdef CONFIG_SECURITY
-	void				*f_security;
+    void				*f_security; // 安全上下文
 #endif
-	/* --- cacheline 2 boundary (128 bytes) --- */
-	struct fown_struct		*f_owner;
-	errseq_t			f_wb_err;
-	errseq_t			f_sb_err;
+    /* --- cacheline 2 boundary (128 bytes) --- */
+    struct fown_struct		*f_owner; // 文件所有者
+    errseq_t			f_wb_err; // 写回错误
+    errseq_t			f_sb_err; // 超级块写回错误
 #ifdef CONFIG_EPOLL
-	struct hlist_head		*f_ep;
+    struct hlist_head		*f_ep; // epoll 钩子
 #endif
-	union {
-		struct callback_head	f_task_work;
-		struct llist_node	f_llist;
-		struct file_ra_state	f_ra;
-		freeptr_t		f_freeptr;
-	};
-	/* --- cacheline 3 boundary (192 bytes) --- */
-} __randomize_layout
+    union {
+        struct callback_head	f_task_work; // 任务工作入口点
+        struct llist_node	f_llist; // 工作队列入口点
+        struct file_ra_state	f_ra; // 预读状态
+        freeptr_t		f_freeptr; // 文件缓存指针
+    };
+    /* --- cacheline 3 boundary (192 bytes) --- */
+} __randomize_layout; // 随机化布局
+
   __attribute__((aligned(4)));	/* lest something weird decides that 2 is OK */
 
 struct file_handle {

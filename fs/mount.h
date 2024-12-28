@@ -5,20 +5,26 @@
 #include <linux/ns_common.h>
 #include <linux/fs_pin.h>
 
+//隔离文件系统挂载点
 struct mnt_namespace {
-	struct ns_common	ns;
-	struct mount *	root;
-	struct rb_root		mounts; /* Protected by namespace_sem */
-	struct user_namespace	*user_ns;
-	struct ucounts		*ucounts;
-	u64			seq;	/* Sequence number to prevent loops */
-	wait_queue_head_t poll;
-	u64 event;
-	unsigned int		nr_mounts; /* # of mounts in the namespace */
-	unsigned int		pending_mounts;
-	struct rb_node		mnt_ns_tree_node; /* node in the mnt_ns_tree */
-	refcount_t		passive; /* number references not pinning @mounts */
-} __randomize_layout;
+    struct ns_common	ns; // 命名空间公共部分
+    struct mount *	root; // 根挂载点
+    struct rb_root		mounts; /* Protected by namespace_sem */
+    // 红黑树根节点，受 namespace_sem 保护
+    struct user_namespace	*user_ns; // 用户命名空间
+    struct ucounts		*ucounts; // 用户计数
+    u64			seq;	/* Sequence number to prevent loops */
+    // 序列号，用于防止循环
+    wait_queue_head_t poll; // 等待队列头
+    u64 event; // 事件
+    unsigned int		nr_mounts; /* # of mounts in the namespace */
+    // 命名空间中的挂载点数量
+    unsigned int		pending_mounts; // 挂起的挂载点数量
+    struct rb_node		mnt_ns_tree_node; /* node in the mnt_ns_tree */
+    // mnt_ns_tree 中的节点
+    refcount_t		passive; /* number references not pinning @mounts */
+    // 非固定挂载点的引用计数
+} __randomize_layout; // 随机化布局
 
 struct mnt_pcp {
 	int mnt_count;

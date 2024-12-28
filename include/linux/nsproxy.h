@@ -29,17 +29,22 @@ struct fs_struct;
  * As soon as a single namespace is cloned or unshared, the
  * nsproxy is copied.
  */
+// 一个结构体，用于包含所有每个进程的命名空间指针 - fs（挂载）、uts、网络、sysvipc 等。
+// pid 命名空间是一个例外 - 它通过 task_active_pid_ns 访问。这里的 pid 命名空间是子进程将使用的命名空间。
+// 'count' 是持有引用的任务数量。每个命名空间的计数将是指向它的 nsproxy 的数量，而不是任务的数量。
+// nsproxy 由共享所有命名空间的任务共享。一旦单个命名空间被克隆或取消共享，nsproxy 就会被复制。
 struct nsproxy {
-	refcount_t count;
-	struct uts_namespace *uts_ns;
-	struct ipc_namespace *ipc_ns;
-	struct mnt_namespace *mnt_ns;
-	struct pid_namespace *pid_ns_for_children;
-	struct net 	     *net_ns;
-	struct time_namespace *time_ns;
-	struct time_namespace *time_ns_for_children;
-	struct cgroup_namespace *cgroup_ns;
+    refcount_t count; // 引用计数
+    struct uts_namespace *uts_ns; // UTS 命名空间
+    struct ipc_namespace *ipc_ns; // IPC 命名空间
+    struct mnt_namespace *mnt_ns; // 挂载命名空间
+    struct pid_namespace *pid_ns_for_children; // 子进程的 PID 命名空间
+    struct net 	     *net_ns; // 网络命名空间
+    struct time_namespace *time_ns; // 时间命名空间
+    struct time_namespace *time_ns_for_children; // 子进程的时间命名空间
+    struct cgroup_namespace *cgroup_ns; // cgroup 命名空间
 };
+
 extern struct nsproxy init_nsproxy;
 
 #define to_ns_common(__ns)                              \

@@ -94,31 +94,37 @@ struct user_event_mm;
  * modifying one set can't modify the other one by
  * mistake.
  */
+// 任务状态位掩码。注意！这些位也在 fs/proc/array.c 中编码：get_task_state()。
+// 我们有两组独立的标志：task->__state 是关于可运行性的，而 task->exit_state 是关于任务退出的。
+// 这可能会让人困惑，但这样修改一组标志不会错误地修改另一组标志。
 
 /* Used in tsk->__state: */
-#define TASK_RUNNING			0x00000000
-#define TASK_INTERRUPTIBLE		0x00000001
-#define TASK_UNINTERRUPTIBLE		0x00000002
-#define __TASK_STOPPED			0x00000004
-#define __TASK_TRACED			0x00000008
+// 用于 tsk->__state：
+#define TASK_RUNNING			0x00000000 // 任务正在运行
+#define TASK_INTERRUPTIBLE		0x00000001 // 任务可中断
+#define TASK_UNINTERRUPTIBLE		0x00000002 // 任务不可中断
+#define __TASK_STOPPED			0x00000004 // 任务停止
+#define __TASK_TRACED			0x00000008 // 任务被跟踪
 /* Used in tsk->exit_state: */
-#define EXIT_DEAD			0x00000010
-#define EXIT_ZOMBIE			0x00000020
-#define EXIT_TRACE			(EXIT_ZOMBIE | EXIT_DEAD)
+// 用于 tsk->exit_state：
+#define EXIT_DEAD			0x00000010 // 任务已死
+#define EXIT_ZOMBIE			0x00000020 // 任务僵尸
+#define EXIT_TRACE			(EXIT_ZOMBIE | EXIT_DEAD) // 任务退出跟踪
 /* Used in tsk->__state again: */
-#define TASK_PARKED			0x00000040
-#define TASK_DEAD			0x00000080
-#define TASK_WAKEKILL			0x00000100
-#define TASK_WAKING			0x00000200
-#define TASK_NOLOAD			0x00000400
-#define TASK_NEW			0x00000800
-#define TASK_RTLOCK_WAIT		0x00001000
-#define TASK_FREEZABLE			0x00002000
-#define __TASK_FREEZABLE_UNSAFE	       (0x00004000 * IS_ENABLED(CONFIG_LOCKDEP))
-#define TASK_FROZEN			0x00008000
-#define TASK_STATE_MAX			0x00010000
+// 再次用于 tsk->__state：
+#define TASK_PARKED			0x00000040 // 任务暂停
+#define TASK_DEAD			0x00000080 // 任务死亡
+#define TASK_WAKEKILL			0x00000100 // 任务唤醒杀死
+#define TASK_WAKING			0x00000200 // 任务唤醒中
+#define TASK_NOLOAD			0x00000400 // 任务不加载
+#define TASK_NEW			0x00000800 // 新任务
+#define TASK_RTLOCK_WAIT		0x00001000 // 任务实时锁等待
+#define TASK_FREEZABLE			0x00002000 // 任务可冻结
+#define __TASK_FREEZABLE_UNSAFE	       (0x00004000 * IS_ENABLED(CONFIG_LOCKDEP)) // 任务可冻结不安全
+#define TASK_FROZEN			0x00008000 // 任务冻结
+#define TASK_STATE_MAX			0x00010000 // 任务状态最大值
 
-#define TASK_ANY			(TASK_STATE_MAX-1)
+#define TASK_ANY			(TASK_STATE_MAX-1) // 任意任务状态
 
 /*
  * DO NOT ADD ANY NEW USERS !
@@ -424,8 +430,8 @@ struct sched_info {
 # define SCHED_CAPACITY_SCALE		(1L << SCHED_CAPACITY_SHIFT)
 
 struct load_weight {
-	unsigned long			weight;
-	u32				inv_weight;
+    unsigned long			weight; // 负载权重
+    u32				inv_weight; // 负载权重的倒数
 };
 
 /*
@@ -539,48 +545,54 @@ struct sched_statistics {
 } ____cacheline_aligned;
 
 struct sched_entity {
-	/* For load-balancing: */
-	struct load_weight		load;
-	struct rb_node			run_node;
-	u64				deadline;
-	u64				min_vruntime;
-	u64				min_slice;
+    /* For load-balancing: */
+    // 用于负载平衡
+    struct load_weight		load; // 负载权重
+    struct rb_node			run_node; // 运行节点
+    u64				deadline; // 截止时间
+    u64				min_vruntime; // 最小虚拟运行时间
+    u64				min_slice; // 最小时间片
 
-	struct list_head		group_node;
-	unsigned char			on_rq;
-	unsigned char			sched_delayed;
-	unsigned char			rel_deadline;
-	unsigned char			custom_slice;
-					/* hole */
+    struct list_head		group_node; // 组节点
+    unsigned char			on_rq; // 是否在运行队列上
+    unsigned char			sched_delayed; // 调度延迟
+    unsigned char			rel_deadline; // 相对截止时间
+    unsigned char			custom_slice; // 自定义时间片
+                    /* hole */
 
-	u64				exec_start;
-	u64				sum_exec_runtime;
-	u64				prev_sum_exec_runtime;
-	u64				vruntime;
-	s64				vlag;
-	u64				slice;
+    u64				exec_start; // 执行开始时间
+    u64				sum_exec_runtime; // 执行时间总和
+    u64				prev_sum_exec_runtime; // 上一次执行时间总和
+    u64				vruntime; // 虚拟运行时间
+    s64				vlag; // 虚拟滞后时间
+    u64				slice; // 时间片
 
-	u64				nr_migrations;
+    u64				nr_migrations; // 迁移次数
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
-	int				depth;
-	struct sched_entity		*parent;
-	/* rq on which this entity is (to be) queued: */
-	struct cfs_rq			*cfs_rq;
-	/* rq "owned" by this entity/group: */
-	struct cfs_rq			*my_q;
-	/* cached value of my_q->h_nr_running */
-	unsigned long			runnable_weight;
+    int				depth; // 深度
+    struct sched_entity		*parent; // 父实体
+    /* rq on which this entity is (to be) queued: */
+    // 此实体（将要）排队的运行队列
+    struct cfs_rq			*cfs_rq;
+    /* rq "owned" by this entity/group: */
+    // 此实体/组“拥有”的运行队列
+    struct cfs_rq			*my_q;
+    /* cached value of my_q->h_nr_running */
+    // my_q->h_nr_running 的缓存值
+    unsigned long			runnable_weight; // 可运行权重
 #endif
 
 #ifdef CONFIG_SMP
-	/*
-	 * Per entity load average tracking.
-	 *
-	 * Put into separate cache line so it does not
-	 * collide with read-mostly values above.
-	 */
-	struct sched_avg		avg;
+    /*
+     * Per entity load average tracking.
+     *
+     * Put into separate cache line so it does not
+     * collide with read-mostly values above.
+     */
+    // 每个实体的负载平均跟踪。
+    // 放入单独的缓存行中，以免与上面的主要读取值冲突。
+    struct sched_avg		avg; // 调度平均值
 #endif
 };
 

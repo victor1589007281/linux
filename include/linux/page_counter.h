@@ -8,37 +8,42 @@
 #include <asm/page.h>
 
 struct page_counter {
-	/*
-	 * Make sure 'usage' does not share cacheline with any other field. The
-	 * memcg->memory.usage is a hot member of struct mem_cgroup.
-	 */
-	atomic_long_t usage;
-	CACHELINE_PADDING(_pad1_);
+    /*
+     * Make sure 'usage' does not share cacheline with any other field. The
+     * memcg->memory.usage is a hot member of struct mem_cgroup.
+     */
+    // 确保 'usage' 不与任何其他字段共享缓存行。memcg->memory.usage 是 struct mem_cgroup 的一个热点成员。
+    atomic_long_t usage;
+    CACHELINE_PADDING(_pad1_);
 
-	/* effective memory.min and memory.min usage tracking */
-	unsigned long emin;
-	atomic_long_t min_usage;
-	atomic_long_t children_min_usage;
+    /* effective memory.min and memory.min usage tracking */
+    // 有效的 memory.min 和 memory.min 使用跟踪
+    unsigned long emin;
+    atomic_long_t min_usage;
+    atomic_long_t children_min_usage;
 
-	/* effective memory.low and memory.low usage tracking */
-	unsigned long elow;
-	atomic_long_t low_usage;
-	atomic_long_t children_low_usage;
+    /* effective memory.low and memory.low usage tracking */
+    // 有效的 memory.low 和 memory.low 使用跟踪
+    unsigned long elow;
+    atomic_long_t low_usage;
+    atomic_long_t children_low_usage;
 
-	unsigned long watermark;
-	/* Latest cg2 reset watermark */
-	unsigned long local_watermark;
-	unsigned long failcnt;
+    unsigned long watermark;
+    /* Latest cg2 reset watermark */
+    // 最新的 cg2 重置水位线
+    unsigned long local_watermark;
+    unsigned long failcnt;
 
-	/* Keep all the read most fields in a separete cacheline. */
-	CACHELINE_PADDING(_pad2_);
+    /* Keep all the read most fields in a separete cacheline. */
+    // 将所有读取最多的字段保存在单独的缓存行中。
+    CACHELINE_PADDING(_pad2_);
 
-	bool protection_support;
-	unsigned long min;
-	unsigned long low;
-	unsigned long high;
-	unsigned long max;
-	struct page_counter *parent;
+    bool protection_support; // 保护支持
+    unsigned long min; // 最小值
+    unsigned long low; // 低值
+    unsigned long high; // 高值
+    unsigned long max; // 最大值
+    struct page_counter *parent; // 父计数器
 } ____cacheline_internodealigned_in_smp;
 
 #if BITS_PER_LONG == 32

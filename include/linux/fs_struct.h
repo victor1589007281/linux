@@ -7,13 +7,13 @@
 #include <linux/seqlock.h>
 
 struct fs_struct {
-	int users;
-	spinlock_t lock;
-	seqcount_spinlock_t seq;
-	int umask;
-	int in_exec;
-	struct path root, pwd;
-} __randomize_layout;
+    int users; // 用户数
+    spinlock_t lock; // 自旋锁
+    seqcount_spinlock_t seq; // 序列计数自旋锁
+    int umask; // 文件创建掩码
+    int in_exec; // 是否在执行中
+    struct path root, pwd; // 根路径和当前工作目录路径
+} __randomize_layout; // 随机化布局
 
 extern struct kmem_cache *fs_cachep;
 
