@@ -269,10 +269,15 @@ extern void hrtimer_start_range_ns(struct hrtimer *timer, ktime_t tim,
  *		relative (HRTIMER_MODE_REL), and pinned (HRTIMER_MODE_PINNED);
  *		softirq based mode is considered for debug purpose only!
  */
+// hrtimer_start - (重新)启动高分辨率定时器
+// @timer: 要添加的定时器
+// @tim: 到期时间
+// @mode: 定时器模式：绝对时间 (HRTIMER_MODE_ABS) 或相对时间 (HRTIMER_MODE_REL)，以及固定模式 (HRTIMER_MODE_PINNED)；
+//        基于软中断的模式仅用于调试目的
 static inline void hrtimer_start(struct hrtimer *timer, ktime_t tim,
-				 const enum hrtimer_mode mode)
+                 const enum hrtimer_mode mode)
 {
-	hrtimer_start_range_ns(timer, tim, 0, mode);
+    hrtimer_start_range_ns(timer, tim, 0, mode); // 启动高分辨率定时器，范围为 0
 }
 
 extern int hrtimer_cancel(struct hrtimer *timer);

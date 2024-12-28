@@ -1213,47 +1213,49 @@ s64 update_curr_common(struct rq *rq)
 /*
  * Update the current task's runtime statistics.
  */
+// 更新当前任务的运行时间统计信息
 static void update_curr(struct cfs_rq *cfs_rq)
 {
-	struct sched_entity *curr = cfs_rq->curr;
-	struct rq *rq = rq_of(cfs_rq);
-	s64 delta_exec;
-	bool resched;
+    struct sched_entity *curr = cfs_rq->curr; // 当前调度实体
+    struct rq *rq = rq_of(cfs_rq); // 获取运行队列
+    s64 delta_exec; // 运行时间增量
+    bool resched; // 是否需要重新调度
 
-	if (unlikely(!curr))
-		return;
+    if (unlikely(!curr))
+        return;
 
-	delta_exec = update_curr_se(rq, curr);
-	if (unlikely(delta_exec <= 0))
-		return;
+    delta_exec = update_curr_se(rq, curr); // 更新当前调度实体的运行时间
+    if (unlikely(delta_exec <= 0))
+        return;
 
-	curr->vruntime += calc_delta_fair(delta_exec, curr);
-	resched = update_deadline(cfs_rq, curr);
-	update_min_vruntime(cfs_rq);
+    curr->vruntime += calc_delta_fair(delta_exec, curr); // 计算并更新虚拟运行时间
+    resched = update_deadline(cfs_rq, curr); // 更新截止时间
+    update_min_vruntime(cfs_rq); // 更新最小虚拟运行时间
 
-	if (entity_is_task(curr)) {
-		struct task_struct *p = task_of(curr);
+    if (entity_is_task(curr)) {
+        struct task_struct *p = task_of(curr); // 获取当前任务
 
-		update_curr_task(p, delta_exec);
+        update_curr_task(p, delta_exec); // 更新当前任务的运行时间
 
-		/*
-		 * Any fair task that runs outside of fair_server should
-		 * account against fair_server such that it can account for
-		 * this time and possibly avoid running this period.
-		 */
-		if (p->dl_server != &rq->fair_server)
-			dl_server_update(&rq->fair_server, delta_exec);
-	}
+        /*
+         * Any fair task that runs outside of fair_server should
+         * account against fair_server such that it can account for
+         * this time and possibly avoid running this period.
+         */
+        // 任何在 fair_server 之外运行的公平任务都应该计入 fair_server，以便它可以计算这段时间并可能避免在这个周期内运行。
+        if (p->dl_server != &rq->fair_server)
+            dl_server_update(&rq->fair_server, delta_exec); // 更新公平服务器的运行时间
+    }
 
-	account_cfs_rq_runtime(cfs_rq, delta_exec);
+    account_cfs_rq_runtime(cfs_rq, delta_exec); // 记录 CFS 运行队列的运行时间
 
-	if (cfs_rq->nr_running == 1)
-		return;
+    if (cfs_rq->nr_running == 1)
+        return;
 
-	if (resched || did_preempt_short(cfs_rq, curr)) {
-		resched_curr(rq);
-		clear_buddies(cfs_rq, curr);
-	}
+    if (resched || did_preempt_short(cfs_rq, curr)) {
+        resched_curr(rq); // 重新调度当前任务
+        clear_buddies(cfs_rq, curr); // 清除伙伴关系
+    }
 }
 
 static void update_curr_fair(struct rq *rq)
@@ -5475,85 +5477,95 @@ static inline void finish_delayed_dequeue_entity(struct sched_entity *se)
 static bool
 dequeue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
 {
-	bool sleep = flags & DEQUEUE_SLEEP;
+    bool sleep = flags & DEQUEUE_SLEEP;
 
-	update_curr(cfs_rq);
+    update_curr(cfs_rq); // 更新当前任务的运行时间
 
-	if (flags & DEQUEUE_DELAYED) {
-		SCHED_WARN_ON(!se->sched_delayed);
-	} else {
-		bool delay = sleep;
-		/*
-		 * DELAY_DEQUEUE relies on spurious wakeups, special task
-		 * states must not suffer spurious wakeups, excempt them.
-		 */
-		if (flags & DEQUEUE_SPECIAL)
-			delay = false;
+    if (flags & DEQUEUE_DELAYED) {
+        SCHED_WARN_ON(!se->sched_delayed); // 检查调度实体是否已延迟
+    } else {
+        bool delay = sleep;
+        /*
+         * DELAY_DEQUEUE relies on spurious wakeups, special task
+         * states must not suffer spurious wakeups, excempt them.
+         */
+        // DELAY_DEQUEUE 依赖于虚假唤醒，特殊任务状态不应受到虚假唤醒的影响。
+        if (flags & DEQUEUE_SPECIAL)
+            delay = false;
 
-		SCHED_WARN_ON(delay && se->sched_delayed);
+        SCHED_WARN_ON(delay && se->sched_delayed); // 检查调度实体是否已延迟
 
-		if (sched_feat(DELAY_DEQUEUE) && delay &&
-		    !entity_eligible(cfs_rq, se)) {
-			if (cfs_rq->next == se)
-				cfs_rq->next = NULL;
-			update_load_avg(cfs_rq, se, 0);
-			se->sched_delayed = 1;
-			return false;
-		}
-	}
+        if (sched_feat(DELAY_DEQUEUE) && delay &&
+            !entity_eligible(cfs_rq, se)) {
+            if (cfs_rq->next == se)
+                cfs_rq->next = NULL;
+            update_load_avg(cfs_rq, se, 0); // 更新负载平均值
+            se->sched_delayed = 1; // 设置调度实体为延迟状态
+            return false;
+        }
+    }
 
-	int action = UPDATE_TG;
-	if (entity_is_task(se) && task_on_rq_migrating(task_of(se)))
-		action |= DO_DETACH;
+    int action = UPDATE_TG;
+    if (entity_is_task(se) && task_on_rq_migrating(task_of(se)))
+        action |= DO_DETACH;
 
-	/*
-	 * When dequeuing a sched_entity, we must:
-	 *   - Update loads to have both entity and cfs_rq synced with now.
-	 *   - For group_entity, update its runnable_weight to reflect the new
-	 *     h_nr_running of its group cfs_rq.
-	 *   - Subtract its previous weight from cfs_rq->load.weight.
-	 *   - For group entity, update its weight to reflect the new share
-	 *     of its group cfs_rq.
-	 */
-	update_load_avg(cfs_rq, se, action);
-	se_update_runnable(se);
+    /*
+     * When dequeuing a sched_entity, we must:
+     *   - Update loads to have both entity and cfs_rq synced with now.
+     *   - For group_entity, update its runnable_weight to reflect the new
+     *     h_nr_running of its group cfs_rq.
+     *   - Subtract its previous weight from cfs_rq->load.weight.
+     *   - For group entity, update its weight to reflect the new share
+     *     of its group cfs_rq.
+     */
+    // 当出队一个调度实体时，我们必须：
+    // - 更新负载，使实体和 cfs_rq 与当前时间同步。
+    // - 对于 group_entity，更新其 runnable_weight 以反映其组 cfs_rq 的新 h_nr_running。
+    // - 从 cfs_rq->load.weight 中减去其先前的权重。
+    // - 对于 group entity，更新其权重以反映其组 cfs_rq 的新份额。
+    update_load_avg(cfs_rq, se, action);
+    se_update_runnable(se); // 更新调度实体的可运行状态
 
-	update_stats_dequeue_fair(cfs_rq, se, flags);
+    update_stats_dequeue_fair(cfs_rq, se, flags); // 更新公平调度的出队统计信息
 
-	clear_buddies(cfs_rq, se);
+    clear_buddies(cfs_rq, se); // 清除伙伴关系
 
-	update_entity_lag(cfs_rq, se);
-	if (sched_feat(PLACE_REL_DEADLINE) && !sleep) {
-		se->deadline -= se->vruntime;
-		se->rel_deadline = 1;
-	}
+    update_entity_lag(cfs_rq, se); // 更新调度实体的滞后时间
+    if (sched_feat(PLACE_REL_DEADLINE) && !sleep) {
+        se->deadline -= se->vruntime;
+        se->rel_deadline = 1;
+    }
 
-	if (se != cfs_rq->curr)
-		__dequeue_entity(cfs_rq, se);
-	se->on_rq = 0;
-	account_entity_dequeue(cfs_rq, se);
+    if (se != cfs_rq->curr)
+        __dequeue_entity(cfs_rq, se); // 从红黑树中移除调度实体
+    se->on_rq = 0; // 设置调度实体不在运行队列中
+    account_entity_dequeue(cfs_rq, se); // 记录调度实体的出队
 
-	/* return excess runtime on last dequeue */
-	return_cfs_rq_runtime(cfs_rq);
+    /* return excess runtime on last dequeue */
+    // 在最后一次出队时返回多余的运行时间
+    return_cfs_rq_runtime(cfs_rq);
 
-	update_cfs_group(se);
+    update_cfs_group(se); // 更新 CFS 组
 
-	/*
-	 * Now advance min_vruntime if @se was the entity holding it back,
-	 * except when: DEQUEUE_SAVE && !DEQUEUE_MOVE, in this case we'll be
-	 * put back on, and if we advance min_vruntime, we'll be placed back
-	 * further than we started -- i.e. we'll be penalized.
-	 */
-	if ((flags & (DEQUEUE_SAVE | DEQUEUE_MOVE)) != DEQUEUE_SAVE)
-		update_min_vruntime(cfs_rq);
+    /*
+     * Now advance min_vruntime if @se was the entity holding it back,
+     * except when: DEQUEUE_SAVE && !DEQUEUE_MOVE, in this case we'll be
+     * put back on, and if we advance min_vruntime, we'll be placed back
+     * further than we started -- i.e. we'll be penalized.
+     */
+    // 如果 @se 是阻止 min_vruntime 前进的实体，则现在前进 min_vruntime，
+    // 除非：DEQUEUE_SAVE && !DEQUEUE_MOVE，在这种情况下，我们将被放回，
+    // 如果我们前进 min_vruntime，我们将被放回比我们开始时更远的地方 -- 即我们将受到惩罚。
+    if ((flags & (DEQUEUE_SAVE | DEQUEUE_MOVE)) != DEQUEUE_SAVE)
+        update_min_vruntime(cfs_rq); // 更新最小虚拟运行时间
 
-	if (flags & DEQUEUE_DELAYED)
-		finish_delayed_dequeue_entity(se);
+    if (flags & DEQUEUE_DELAYED)
+        finish_delayed_dequeue_entity(se); // 完成延迟出队实体
 
-	if (cfs_rq->nr_running == 0)
-		update_idle_cfs_rq_clock_pelt(cfs_rq);
+    if (cfs_rq->nr_running == 0)
+        update_idle_cfs_rq_clock_pelt(cfs_rq); // 更新空闲 CFS 运行队列的时钟
 
-	return true;
+    return true;
 }
 
 static void
@@ -5637,25 +5649,31 @@ static bool check_cfs_rq_runtime(struct cfs_rq *cfs_rq);
 
 static void put_prev_entity(struct cfs_rq *cfs_rq, struct sched_entity *prev)
 {
-	/*
-	 * If still on the runqueue then deactivate_task()
-	 * was not called and update_curr() has to be done:
-	 */
-	if (prev->on_rq)
-		update_curr(cfs_rq);
+    /*
+     * If still on the runqueue then deactivate_task()
+     * was not called and update_curr() has to be done:
+     */
+    // 如果仍在运行队列中，则未调用 deactivate_task()，需要执行 update_curr()
+	//运行队列带宽的更新与申请
+    if (prev->on_rq)
+        update_curr(cfs_rq); // 更新当前任务的运行时间
 
-	/* throttle cfs_rqs exceeding runtime */
-	check_cfs_rq_runtime(cfs_rq);
+    /* throttle cfs_rqs exceeding runtime */
+    // 检查 cfs_rq 的运行时间是否超出限制
+	// 判断是否需要把任务挂起
+    check_cfs_rq_runtime(cfs_rq);
 
-	if (prev->on_rq) {
-		update_stats_wait_start_fair(cfs_rq, prev);
-		/* Put 'current' back into the tree. */
-		__enqueue_entity(cfs_rq, prev);
-		/* in !on_rq case, update occurred at dequeue */
-		update_load_avg(cfs_rq, prev, 0);
-	}
-	SCHED_WARN_ON(cfs_rq->curr != prev);
-	cfs_rq->curr = NULL;
+    if (prev->on_rq) {
+        update_stats_wait_start_fair(cfs_rq, prev); // 更新等待开始的统计信息
+        /* Put 'current' back into the tree. */
+        // 将当前任务重新放入红黑树中
+        __enqueue_entity(cfs_rq, prev);
+        /* in !on_rq case, update occurred at dequeue */
+        // 如果不在运行队列中，更新在出队时发生
+        update_load_avg(cfs_rq, prev, 0); // 更新负载平均值
+    }
+    SCHED_WARN_ON(cfs_rq->curr != prev); // 检查当前任务是否与 prev 一致
+    cfs_rq->curr = NULL; // 将当前任务设置为 NULL
 }
 
 static void
@@ -5735,7 +5753,10 @@ static inline u64 default_cfs_period(void)
 
 static inline u64 sched_cfs_bandwidth_slice(void)
 {
-	return (u64)sysctl_sched_cfs_bandwidth_slice * NSEC_PER_USEC;
+    // 返回 CFS 带宽时间片，单位为纳秒
+	//每次申请的时间：sysctl -a|grep sched_cfs_bandwidth_slice
+	// 5000 (微妙=5ms)
+    return (u64)sysctl_sched_cfs_bandwidth_slice * NSEC_PER_USEC;
 }
 
 /*
@@ -5745,22 +5766,25 @@ static inline u64 sched_cfs_bandwidth_slice(void)
  *
  * requires cfs_b->lock
  */
+// 根据分配的配额补充运行时间。我们直接使用 sched_clock_cpu 而不是 rq->clock，以避免在 rq->lock 周围添加额外的同步。
+//
+// 需要持有 cfs_b 的锁
 void __refill_cfs_bandwidth_runtime(struct cfs_bandwidth *cfs_b)
 {
-	s64 runtime;
+    s64 runtime;
 
-	if (unlikely(cfs_b->quota == RUNTIME_INF))
-		return;
+    if (unlikely(cfs_b->quota == RUNTIME_INF))
+        return; // 如果配额是无限的，则返回
 
-	cfs_b->runtime += cfs_b->quota;
-	runtime = cfs_b->runtime_snap - cfs_b->runtime;
-	if (runtime > 0) {
-		cfs_b->burst_time += runtime;
-		cfs_b->nr_burst++;
-	}
+    cfs_b->runtime += cfs_b->quota; // 增加运行时间
+    runtime = cfs_b->runtime_snap - cfs_b->runtime; // 计算运行时间差
+    if (runtime > 0) {
+        cfs_b->burst_time += runtime; // 增加突发时间
+        cfs_b->nr_burst++; // 增加突发次数
+    }
 
-	cfs_b->runtime = min(cfs_b->runtime, cfs_b->quota + cfs_b->burst);
-	cfs_b->runtime_snap = cfs_b->runtime;
+    cfs_b->runtime = min(cfs_b->runtime, cfs_b->quota + cfs_b->burst); // 限制运行时间
+    cfs_b->runtime_snap = cfs_b->runtime; // 更新运行时间快照
 }
 
 static inline struct cfs_bandwidth *tg_cfs_bandwidth(struct task_group *tg)
@@ -5769,71 +5793,81 @@ static inline struct cfs_bandwidth *tg_cfs_bandwidth(struct task_group *tg)
 }
 
 /* returns 0 on failure to allocate runtime */
+// 分配运行时间失败时返回 0
 static int __assign_cfs_rq_runtime(struct cfs_bandwidth *cfs_b,
-				   struct cfs_rq *cfs_rq, u64 target_runtime)
+                   struct cfs_rq *cfs_rq, u64 target_runtime)
 {
-	u64 min_amount, amount = 0;
+    u64 min_amount, amount = 0;
 
-	lockdep_assert_held(&cfs_b->lock);
+    lockdep_assert_held(&cfs_b->lock); // 确保持有 cfs_b 的锁
 
-	/* note: this is a positive sum as runtime_remaining <= 0 */
-	min_amount = target_runtime - cfs_rq->runtime_remaining;
+    /* note: this is a positive sum as runtime_remaining <= 0 */
+    // 注意：这是一个正数，因为 runtime_remaining <= 0
+	//申请的时间数量
+    min_amount = target_runtime - cfs_rq->runtime_remaining;
 
-	if (cfs_b->quota == RUNTIME_INF)
-		amount = min_amount;
-	else {
-		start_cfs_bandwidth(cfs_b);
+//如果没有限制，则要多少给多少
+    if (cfs_b->quota == RUNTIME_INF)
+        amount = min_amount; 
+    else {
+		//保证定时器是打开的，保证周期性地为任务组重置带宽时间
+        start_cfs_bandwidth(cfs_b); // 启动 CFS 带宽
 
-		if (cfs_b->runtime > 0) {
-			amount = min(cfs_b->runtime, min_amount);
-			cfs_b->runtime -= amount;
-			cfs_b->idle = 0;
-		}
-	}
+//如果本周期还有时间，则可以分配
+        if (cfs_b->runtime > 0) {
+            amount = min(cfs_b->runtime, min_amount); // 分配最小量
+            cfs_b->runtime -= amount; // 减少 CFS 带宽的运行时间
+            cfs_b->idle = 0; // 重置空闲时间
+        }
+    }
 
-	cfs_rq->runtime_remaining += amount;
+    cfs_rq->runtime_remaining += amount; // 增加 CFS 运行队列的剩余运行时间
 
-	return cfs_rq->runtime_remaining > 0;
+    return cfs_rq->runtime_remaining > 0; // 返回是否成功分配运行时间
 }
 
 /* returns 0 on failure to allocate runtime */
+// 分配运行时间失败时返回 0
 static int assign_cfs_rq_runtime(struct cfs_rq *cfs_rq)
 {
-	struct cfs_bandwidth *cfs_b = tg_cfs_bandwidth(cfs_rq->tg);
-	int ret;
+    struct cfs_bandwidth *cfs_b = tg_cfs_bandwidth(cfs_rq->tg); // 获取 CFS 带宽
+    int ret;
 
-	raw_spin_lock(&cfs_b->lock);
-	ret = __assign_cfs_rq_runtime(cfs_b, cfs_rq, sched_cfs_bandwidth_slice());
-	raw_spin_unlock(&cfs_b->lock);
+    raw_spin_lock(&cfs_b->lock); // 加锁
+    ret = __assign_cfs_rq_runtime(cfs_b, cfs_rq, sched_cfs_bandwidth_slice()); // 分配 CFS 运行时间
+    raw_spin_unlock(&cfs_b->lock); // 解锁
 
-	return ret;
+    return ret;
 }
 
 static void __account_cfs_rq_runtime(struct cfs_rq *cfs_rq, u64 delta_exec)
 {
-	/* dock delta_exec before expiring quota (as it could span periods) */
-	cfs_rq->runtime_remaining -= delta_exec;
+    /* dock delta_exec before expiring quota (as it could span periods) */
+    // 在配额到期前扣除 delta_exec（因为它可能跨越多个周期）
+    cfs_rq->runtime_remaining -= delta_exec;
 
-	if (likely(cfs_rq->runtime_remaining > 0))
-		return;
+    if (likely(cfs_rq->runtime_remaining > 0))
+        return; // 如果剩余运行时间大于 0，则返回
 
-	if (cfs_rq->throttled)
-		return;
-	/*
-	 * if we're unable to extend our runtime we resched so that the active
-	 * hierarchy can be throttled
-	 */
-	if (!assign_cfs_rq_runtime(cfs_rq) && likely(cfs_rq->curr))
-		resched_curr(rq_of(cfs_rq));
+    if (cfs_rq->throttled)
+        return; // 如果已经被限制，则返回
+
+    /*
+     * if we're unable to extend our runtime we resched so that the active
+     * hierarchy can be throttled
+     */
+    // 如果我们无法延长运行时间，我们重新调度，以便可以限制活动层次结构
+    if (!assign_cfs_rq_runtime(cfs_rq) && likely(cfs_rq->curr))
+        resched_curr(rq_of(cfs_rq)); // 重新调度当前任务
 }
 
 static __always_inline
 void account_cfs_rq_runtime(struct cfs_rq *cfs_rq, u64 delta_exec)
 {
-	if (!cfs_bandwidth_used() || !cfs_rq->runtime_enabled)
-		return;
+    if (!cfs_bandwidth_used() || !cfs_rq->runtime_enabled)
+        return; // 如果没有使用 CFS 带宽或运行时间未启用，则返回
 
-	__account_cfs_rq_runtime(cfs_rq, delta_exec);
+    __account_cfs_rq_runtime(cfs_rq, delta_exec); // 记录 CFS 运行队列的运行时间
 }
 
 static inline int cfs_rq_throttled(struct cfs_rq *cfs_rq)
@@ -5914,105 +5948,119 @@ static int tg_throttle_down(struct task_group *tg, void *data)
 
 static bool throttle_cfs_rq(struct cfs_rq *cfs_rq)
 {
-	struct rq *rq = rq_of(cfs_rq);
-	struct cfs_bandwidth *cfs_b = tg_cfs_bandwidth(cfs_rq->tg);
-	struct sched_entity *se;
-	long task_delta, idle_task_delta, dequeue = 1;
-	long rq_h_nr_running = rq->cfs.h_nr_running;
+    struct rq *rq = rq_of(cfs_rq); // 获取运行队列
+    struct cfs_bandwidth *cfs_b = tg_cfs_bandwidth(cfs_rq->tg); // 获取 CFS 带宽
+    struct sched_entity *se;
+    long task_delta, idle_task_delta, dequeue = 1;
+    long rq_h_nr_running = rq->cfs.h_nr_running;
 
-	raw_spin_lock(&cfs_b->lock);
-	/* This will start the period timer if necessary */
-	if (__assign_cfs_rq_runtime(cfs_b, cfs_rq, 1)) {
-		/*
-		 * We have raced with bandwidth becoming available, and if we
-		 * actually throttled the timer might not unthrottle us for an
-		 * entire period. We additionally needed to make sure that any
-		 * subsequent check_cfs_rq_runtime calls agree not to throttle
-		 * us, as we may commit to do cfs put_prev+pick_next, so we ask
-		 * for 1ns of runtime rather than just check cfs_b.
-		 */
-		dequeue = 0;
-	} else {
-		list_add_tail_rcu(&cfs_rq->throttled_list,
-				  &cfs_b->throttled_cfs_rq);
-	}
-	raw_spin_unlock(&cfs_b->lock);
+    raw_spin_lock(&cfs_b->lock);
+    /* This will start the period timer if necessary */
+    // 如果需要，这将启动周期定时器
+    if (__assign_cfs_rq_runtime(cfs_b, cfs_rq, 1)) {
+        /*
+         * We have raced with bandwidth becoming available, and if we
+         * actually throttled the timer might not unthrottle us for an
+         * entire period. We additionally needed to make sure that any
+         * subsequent check_cfs_rq_runtime calls agree not to throttle
+         * us, as we may commit to do cfs put_prev+pick_next, so we ask
+         * for 1ns of runtime rather than just check cfs_b.
+         */
+        // 我们与带宽变得可用竞争，如果我们实际限制了，定时器可能在整个周期内不会解除限制。
+        // 我们还需要确保任何后续的 check_cfs_rq_runtime 调用同意不限制我们，因为我们可能会承诺执行 cfs put_prev+pick_next，
+        // 所以我们要求 1ns 的运行时间，而不仅仅是检查 cfs_b。
+        dequeue = 0;
+    } else {
+        list_add_tail_rcu(&cfs_rq->throttled_list,
+                  &cfs_b->throttled_cfs_rq); // 将 cfs_rq 添加到限制列表中
+    }
+    raw_spin_unlock(&cfs_b->lock);
 
-	if (!dequeue)
-		return false;  /* Throttle no longer required. */
+    if (!dequeue)
+        return false;  /* Throttle no longer required. */
 
-	se = cfs_rq->tg->se[cpu_of(rq_of(cfs_rq))];
+//查找所属的task_group下的se
+    se = cfs_rq->tg->se[cpu_of(rq_of(cfs_rq))];
 
-	/* freeze hierarchy runnable averages while throttled */
-	rcu_read_lock();
-	walk_tg_tree_from(cfs_rq->tg, tg_throttle_down, tg_nop, (void *)rq);
-	rcu_read_unlock();
+    /* freeze hierarchy runnable averages while throttled */
+    // 在限制期间冻结层次结构的可运行平均值
+    rcu_read_lock();
+    walk_tg_tree_from(cfs_rq->tg, tg_throttle_down, tg_nop, (void *)rq);
+    rcu_read_unlock();
 
-	task_delta = cfs_rq->h_nr_running;
-	idle_task_delta = cfs_rq->idle_h_nr_running;
-	for_each_sched_entity(se) {
-		struct cfs_rq *qcfs_rq = cfs_rq_of(se);
-		int flags;
+    task_delta = cfs_rq->h_nr_running;
+    idle_task_delta = cfs_rq->idle_h_nr_running;
+	//遍历每一个调度实体，从cfs_rq的红黑树中剔除
+    for_each_sched_entity(se) {
+        struct cfs_rq *qcfs_rq = cfs_rq_of(se);
+        int flags;
 
-		/* throttled entity or throttle-on-deactivate */
-		if (!se->on_rq)
-			goto done;
+        /* throttled entity or throttle-on-deactivate */
+        // 被限制的实体或在停用时限制
+        if (!se->on_rq)
+            goto done;
 
-		/*
-		 * Abuse SPECIAL to avoid delayed dequeue in this instance.
-		 * This avoids teaching dequeue_entities() about throttled
-		 * entities and keeps things relatively simple.
-		 */
-		flags = DEQUEUE_SLEEP | DEQUEUE_SPECIAL;
-		if (se->sched_delayed)
-			flags |= DEQUEUE_DELAYED;
-		dequeue_entity(qcfs_rq, se, flags);
+        /*
+         * Abuse SPECIAL to avoid delayed dequeue in this instance.
+         * This avoids teaching dequeue_entities() about throttled
+         * entities and keeps things relatively simple.
+         */
+        // 滥用 SPECIAL 以避免在这种情况下延迟出队。这避免了教 dequeue_entities() 关于被限制的实体，并保持相对简单。
+        flags = DEQUEUE_SLEEP | DEQUEUE_SPECIAL;
+        if (se->sched_delayed)
+            flags |= DEQUEUE_DELAYED;			
+        dequeue_entity(qcfs_rq, se, flags);
 
-		if (cfs_rq_is_idle(group_cfs_rq(se)))
-			idle_task_delta = cfs_rq->h_nr_running;
+        if (cfs_rq_is_idle(group_cfs_rq(se)))
+            idle_task_delta = cfs_rq->h_nr_running;
 
-		qcfs_rq->h_nr_running -= task_delta;
-		qcfs_rq->idle_h_nr_running -= idle_task_delta;
+        qcfs_rq->h_nr_running -= task_delta;
+        qcfs_rq->idle_h_nr_running -= idle_task_delta;
 
-		if (qcfs_rq->load.weight) {
-			/* Avoid re-evaluating load for this entity: */
-			se = parent_entity(se);
-			break;
-		}
-	}
+        if (qcfs_rq->load.weight) {
+            /* Avoid re-evaluating load for this entity: */
+            // 避免重新评估此实体的负载：
+            se = parent_entity(se);
+            break;
+        }
+    }
 
-	for_each_sched_entity(se) {
-		struct cfs_rq *qcfs_rq = cfs_rq_of(se);
-		/* throttled entity or throttle-on-deactivate */
-		if (!se->on_rq)
-			goto done;
+    for_each_sched_entity(se) {
+        struct cfs_rq *qcfs_rq = cfs_rq_of(se);
+        /* throttled entity or throttle-on-deactivate */
+        // 被限制的实体或在停用时限制
+        if (!se->on_rq)
+            goto done;
 
-		update_load_avg(qcfs_rq, se, 0);
-		se_update_runnable(se);
+        update_load_avg(qcfs_rq, se, 0);
+        se_update_runnable(se);
 
-		if (cfs_rq_is_idle(group_cfs_rq(se)))
-			idle_task_delta = cfs_rq->h_nr_running;
+        if (cfs_rq_is_idle(group_cfs_rq(se)))
+            idle_task_delta = cfs_rq->h_nr_running;
 
-		qcfs_rq->h_nr_running -= task_delta;
-		qcfs_rq->idle_h_nr_running -= idle_task_delta;
-	}
+        qcfs_rq->h_nr_running -= task_delta;
+        qcfs_rq->idle_h_nr_running -= idle_task_delta;
+    }
 
-	/* At this point se is NULL and we are at root level*/
-	sub_nr_running(rq, task_delta);
+    /* At this point se is NULL and we are at root level*/
+    // 此时 se 为 NULL，我们处于根级别
+    sub_nr_running(rq, task_delta);
 
-	/* Stop the fair server if throttling resulted in no runnable tasks */
-	if (rq_h_nr_running && !rq->cfs.h_nr_running)
-		dl_server_stop(&rq->fair_server);
+    /* Stop the fair server if throttling resulted in no runnable tasks */
+    // 如果限制导致没有可运行的任务，则停止公平服务器
+    if (rq_h_nr_running && !rq->cfs.h_nr_running)
+        dl_server_stop(&rq->fair_server);
 done:
-	/*
-	 * Note: distribution will already see us throttled via the
-	 * throttled-list.  rq->lock protects completion.
-	 */
-	cfs_rq->throttled = 1;
-	SCHED_WARN_ON(cfs_rq->throttled_clock);
-	if (cfs_rq->nr_running)
-		cfs_rq->throttled_clock = rq_clock(rq);
-	return true;
+    /*
+     * Note: distribution will already see us throttled via the
+     * throttled-list.  rq->lock protects completion.
+     */
+    // 注意：分发将通过限制列表看到我们已被限制。rq->lock 保护完成。
+    cfs_rq->throttled = 1;
+    SCHED_WARN_ON(cfs_rq->throttled_clock);
+    if (cfs_rq->nr_running)
+        cfs_rq->throttled_clock = rq_clock(rq);
+    return true;
 }
 
 void unthrottle_cfs_rq(struct cfs_rq *cfs_rq)
@@ -6190,84 +6238,88 @@ static void unthrottle_cfs_rq_async(struct cfs_rq *cfs_rq)
 
 static bool distribute_cfs_runtime(struct cfs_bandwidth *cfs_b)
 {
-	int this_cpu = smp_processor_id();
-	u64 runtime, remaining = 1;
-	bool throttled = false;
-	struct cfs_rq *cfs_rq, *tmp;
-	struct rq_flags rf;
-	struct rq *rq;
-	LIST_HEAD(local_unthrottle);
+    int this_cpu = smp_processor_id();
+    u64 runtime, remaining = 1;
+    bool throttled = false;
+    struct cfs_rq *cfs_rq, *tmp;
+    struct rq_flags rf;
+    struct rq *rq;
+    LIST_HEAD(local_unthrottle);
 
-	rcu_read_lock();
-	list_for_each_entry_rcu(cfs_rq, &cfs_b->throttled_cfs_rq,
-				throttled_list) {
-		rq = rq_of(cfs_rq);
+    rcu_read_lock();
+    list_for_each_entry_rcu(cfs_rq, &cfs_b->throttled_cfs_rq,
+                throttled_list) {
+        rq = rq_of(cfs_rq);
 
-		if (!remaining) {
-			throttled = true;
-			break;
-		}
+        if (!remaining) {
+            throttled = true;
+            break;
+        }
 
-		rq_lock_irqsave(rq, &rf);
-		if (!cfs_rq_throttled(cfs_rq))
-			goto next;
+        rq_lock_irqsave(rq, &rf);
+        if (!cfs_rq_throttled(cfs_rq))
+            goto next;
 
-		/* Already queued for async unthrottle */
-		if (!list_empty(&cfs_rq->throttled_csd_list))
-			goto next;
+        /* Already queued for async unthrottle */
+        // 已经排队等待异步解除限制
+        if (!list_empty(&cfs_rq->throttled_csd_list))
+            goto next;
 
-		/* By the above checks, this should never be true */
-		SCHED_WARN_ON(cfs_rq->runtime_remaining > 0);
+        /* By the above checks, this should never be true */
+        // 根据上述检查，这不应该是真的
+        SCHED_WARN_ON(cfs_rq->runtime_remaining > 0);
 
-		raw_spin_lock(&cfs_b->lock);
-		runtime = -cfs_rq->runtime_remaining + 1;
-		if (runtime > cfs_b->runtime)
-			runtime = cfs_b->runtime;
-		cfs_b->runtime -= runtime;
-		remaining = cfs_b->runtime;
-		raw_spin_unlock(&cfs_b->lock);
+        raw_spin_lock(&cfs_b->lock);
+        runtime = -cfs_rq->runtime_remaining + 1;
+        if (runtime > cfs_b->runtime)
+            runtime = cfs_b->runtime;
+        cfs_b->runtime -= runtime;
+        remaining = cfs_b->runtime;
+        raw_spin_unlock(&cfs_b->lock);
 
-		cfs_rq->runtime_remaining += runtime;
+        cfs_rq->runtime_remaining += runtime;
 
-		/* we check whether we're throttled above */
-		if (cfs_rq->runtime_remaining > 0) {
-			if (cpu_of(rq) != this_cpu) {
-				unthrottle_cfs_rq_async(cfs_rq);
-			} else {
-				/*
-				 * We currently only expect to be unthrottling
-				 * a single cfs_rq locally.
-				 */
-				SCHED_WARN_ON(!list_empty(&local_unthrottle));
-				list_add_tail(&cfs_rq->throttled_csd_list,
-					      &local_unthrottle);
-			}
-		} else {
-			throttled = true;
-		}
+        /* we check whether we're throttled above */
+        // 我们检查上面是否被限制
+        if (cfs_rq->runtime_remaining > 0) {
+            if (cpu_of(rq) != this_cpu) {
+                unthrottle_cfs_rq_async(cfs_rq); // 异步解除 CFS 运行队列的限制
+            } else {
+                /*
+                 * We currently only expect to be unthrottling
+                 * a single cfs_rq locally.
+                 */
+                // 我们目前只期望在本地解除一个 cfs_rq 的限制。
+                SCHED_WARN_ON(!list_empty(&local_unthrottle));
+                list_add_tail(&cfs_rq->throttled_csd_list,
+                          &local_unthrottle);
+            }
+        } else {
+            throttled = true;
+        }
 
 next:
-		rq_unlock_irqrestore(rq, &rf);
-	}
+        rq_unlock_irqrestore(rq, &rf);
+    }
 
-	list_for_each_entry_safe(cfs_rq, tmp, &local_unthrottle,
-				 throttled_csd_list) {
-		struct rq *rq = rq_of(cfs_rq);
+    list_for_each_entry_safe(cfs_rq, tmp, &local_unthrottle,
+                 throttled_csd_list) {
+        struct rq *rq = rq_of(cfs_rq);
 
-		rq_lock_irqsave(rq, &rf);
+        rq_lock_irqsave(rq, &rf);
 
-		list_del_init(&cfs_rq->throttled_csd_list);
+        list_del_init(&cfs_rq->throttled_csd_list);
 
-		if (cfs_rq_throttled(cfs_rq))
-			unthrottle_cfs_rq(cfs_rq);
+        if (cfs_rq_throttled(cfs_rq))
+            unthrottle_cfs_rq(cfs_rq); // 解除 CFS 运行队列的限制
 
-		rq_unlock_irqrestore(rq, &rf);
-	}
-	SCHED_WARN_ON(!list_empty(&local_unthrottle));
+        rq_unlock_irqrestore(rq, &rf);
+    }
+    SCHED_WARN_ON(!list_empty(&local_unthrottle));
 
-	rcu_read_unlock();
+    rcu_read_unlock();
 
-	return throttled;
+    return throttled;
 }
 
 /*
@@ -6276,58 +6328,68 @@ next:
  * period the timer is deactivated until scheduling resumes; cfs_b->idle is
  * used to track this state.
  */
+// 负责为任务组补充带宽并在适当时解除其 cfs_rq 的限制。
+// 如果在上一个周期内没有活动，则定时器将被停用，直到调度恢复；cfs_b->idle 用于跟踪此状态。
 static int do_sched_cfs_period_timer(struct cfs_bandwidth *cfs_b, int overrun, unsigned long flags)
 {
-	int throttled;
+    int throttled;
 
-	/* no need to continue the timer with no bandwidth constraint */
-	if (cfs_b->quota == RUNTIME_INF)
-		goto out_deactivate;
+    /* no need to continue the timer with no bandwidth constraint */
+    // 如果没有带宽限制，则无需继续定时器
+    if (cfs_b->quota == RUNTIME_INF)
+        goto out_deactivate;
 
-	throttled = !list_empty(&cfs_b->throttled_cfs_rq);
-	cfs_b->nr_periods += overrun;
+    throttled = !list_empty(&cfs_b->throttled_cfs_rq);
+    cfs_b->nr_periods += overrun;
 
-	/* Refill extra burst quota even if cfs_b->idle */
-	__refill_cfs_bandwidth_runtime(cfs_b);
+    /* Refill extra burst quota even if cfs_b->idle */
+    // 即使 cfs_b 处于空闲状态，也要补充额外的突发配额
+    __refill_cfs_bandwidth_runtime(cfs_b);
 
-	/*
-	 * idle depends on !throttled (for the case of a large deficit), and if
-	 * we're going inactive then everything else can be deferred
-	 */
-	if (cfs_b->idle && !throttled)
-		goto out_deactivate;
+    /*
+     * idle depends on !throttled (for the case of a large deficit), and if
+     * we're going inactive then everything else can be deferred
+     */
+    // 空闲取决于 !throttled（对于大额赤字的情况），如果我们将进入非活动状态，则其他所有操作都可以推迟
+    if (cfs_b->idle && !throttled)
+        goto out_deactivate;
 
-	if (!throttled) {
-		/* mark as potentially idle for the upcoming period */
-		cfs_b->idle = 1;
-		return 0;
-	}
+    if (!throttled) {
+        /* mark as potentially idle for the upcoming period */
+        // 标记为即将到来的周期可能空闲
+        cfs_b->idle = 1;
+        return 0;
+    }
 
-	/* account preceding periods in which throttling occurred */
-	cfs_b->nr_throttled += overrun;
+    /* account preceding periods in which throttling occurred */
+    // 记录发生限制的前几个周期
+    cfs_b->nr_throttled += overrun;
 
-	/*
-	 * This check is repeated as we release cfs_b->lock while we unthrottle.
-	 */
-	while (throttled && cfs_b->runtime > 0) {
-		raw_spin_unlock_irqrestore(&cfs_b->lock, flags);
-		/* we can't nest cfs_b->lock while distributing bandwidth */
-		throttled = distribute_cfs_runtime(cfs_b);
-		raw_spin_lock_irqsave(&cfs_b->lock, flags);
-	}
+    /*
+     * This check is repeated as we release cfs_b->lock while we unthrottle.
+     */
+    // 当我们解除限制时，我们会释放 cfs_b 的锁，因此重复此检查。
+    while (throttled && cfs_b->runtime > 0) {
+        raw_spin_unlock_irqrestore(&cfs_b->lock, flags);
+        /* we can't nest cfs_b->lock while distributing bandwidth */
+        // 在分配带宽时，我们不能嵌套 cfs_b 的锁
+        throttled = distribute_cfs_runtime(cfs_b);
+        raw_spin_lock_irqsave(&cfs_b->lock, flags);
+    }
 
-	/*
-	 * While we are ensured activity in the period following an
-	 * unthrottle, this also covers the case in which the new bandwidth is
-	 * insufficient to cover the existing bandwidth deficit.  (Forcing the
-	 * timer to remain active while there are any throttled entities.)
-	 */
-	cfs_b->idle = 0;
+    /*
+     * While we are ensured activity in the period following an
+     * unthrottle, this also covers the case in which the new bandwidth is
+     * insufficient to cover the existing bandwidth deficit.  (Forcing the
+     * timer to remain active while there are any throttled entities.)
+     */
+    // 虽然我们确保在解除限制后的周期内有活动，但这也涵盖了新带宽不足以弥补现有带宽赤字的情况。（在存在任何受限实体时强制定时器保持活动状态。）
+    cfs_b->idle = 0;
 
-	return 0;
+    return 0;
 
 out_deactivate:
-	return 1;
+    return 1;
 }
 
 /* a cfs_rq won't donate quota below this amount */
@@ -6363,84 +6425,94 @@ static int runtime_refresh_within(struct cfs_bandwidth *cfs_b, u64 min_expire)
 
 static void start_cfs_slack_bandwidth(struct cfs_bandwidth *cfs_b)
 {
-	u64 min_left = cfs_bandwidth_slack_period + min_bandwidth_expiration;
+    u64 min_left = cfs_bandwidth_slack_period + min_bandwidth_expiration;
 
-	/* if there's a quota refresh soon don't bother with slack */
-	if (runtime_refresh_within(cfs_b, min_left))
-		return;
+    /* if there's a quota refresh soon don't bother with slack */
+    // 如果配额即将刷新，则不需要松弛
+    if (runtime_refresh_within(cfs_b, min_left))
+        return;
 
-	/* don't push forwards an existing deferred unthrottle */
-	if (cfs_b->slack_started)
-		return;
-	cfs_b->slack_started = true;
+    /* don't push forwards an existing deferred unthrottle */
+    // 不要推进现有的延迟解除限制
+    if (cfs_b->slack_started)
+        return;
+    cfs_b->slack_started = true;
 
-	hrtimer_start(&cfs_b->slack_timer,
-			ns_to_ktime(cfs_bandwidth_slack_period),
-			HRTIMER_MODE_REL);
+    hrtimer_start(&cfs_b->slack_timer,
+              ns_to_ktime(cfs_bandwidth_slack_period),
+              HRTIMER_MODE_REL); // 启动松弛定时器
 }
 
 /* we know any runtime found here is valid as update_curr() precedes return */
+// 我们知道这里找到的任何运行时间都是有效的，因为 update_curr() 先于 return
 static void __return_cfs_rq_runtime(struct cfs_rq *cfs_rq)
 {
-	struct cfs_bandwidth *cfs_b = tg_cfs_bandwidth(cfs_rq->tg);
-	s64 slack_runtime = cfs_rq->runtime_remaining - min_cfs_rq_runtime;
+    struct cfs_bandwidth *cfs_b = tg_cfs_bandwidth(cfs_rq->tg);
+	//给自己留一点时间(1ms)
+    s64 slack_runtime = cfs_rq->runtime_remaining - min_cfs_rq_runtime;
 
-	if (slack_runtime <= 0)
-		return;
+    if (slack_runtime <= 0)
+        return;
 
-	raw_spin_lock(&cfs_b->lock);
-	if (cfs_b->quota != RUNTIME_INF) {
-		cfs_b->runtime += slack_runtime;
+    raw_spin_lock(&cfs_b->lock);
+    if (cfs_b->quota != RUNTIME_INF) {
+		//返回到全局时间池
+        cfs_b->runtime += slack_runtime;
 
-		/* we are under rq->lock, defer unthrottling using a timer */
-		if (cfs_b->runtime > sched_cfs_bandwidth_slice() &&
-		    !list_empty(&cfs_b->throttled_cfs_rq))
-			start_cfs_slack_bandwidth(cfs_b);
-	}
-	raw_spin_unlock(&cfs_b->lock);
+        /* we are under rq->lock, defer unthrottling using a timer */
+        // 我们在 rq->lock 下，使用定时器延迟解除限制
+		// 时间有余额了，有进程还被限制，则尝试解除CPU限制
+        if (cfs_b->runtime > sched_cfs_bandwidth_slice() &&
+            !list_empty(&cfs_b->throttled_cfs_rq))
+            start_cfs_slack_bandwidth(cfs_b);
+    }
+    raw_spin_unlock(&cfs_b->lock);
 
-	/* even if it's not valid for return we don't want to try again */
-	cfs_rq->runtime_remaining -= slack_runtime;
+    /* even if it's not valid for return we don't want to try again */
+    // 即使它不适合返回，我们也不想再试一次
+    cfs_rq->runtime_remaining -= slack_runtime;
 }
 
 static __always_inline void return_cfs_rq_runtime(struct cfs_rq *cfs_rq)
 {
-	if (!cfs_bandwidth_used())
-		return;
+    if (!cfs_bandwidth_used())
+        return; // 如果没有使用 CFS 带宽，则返回
 
-	if (!cfs_rq->runtime_enabled || cfs_rq->nr_running)
-		return;
+    if (!cfs_rq->runtime_enabled || cfs_rq->nr_running)
+        return; // 如果运行时间未启用或有任务在运行，则返回
 
-	__return_cfs_rq_runtime(cfs_rq);
+    __return_cfs_rq_runtime(cfs_rq); // 返回 CFS 运行队列的多余运行时间
 }
 
 /*
  * This is done with a timer (instead of inline with bandwidth return) since
  * it's necessary to juggle rq->locks to unthrottle their respective cfs_rqs.
  */
+// 这是通过定时器完成的（而不是与带宽返回内联），因为有必要处理 rq->locks 以解除各自 cfs_rqs 的限制。
 static void do_sched_cfs_slack_timer(struct cfs_bandwidth *cfs_b)
 {
-	u64 runtime = 0, slice = sched_cfs_bandwidth_slice();
-	unsigned long flags;
+    u64 runtime = 0, slice = sched_cfs_bandwidth_slice();
+    unsigned long flags;
 
-	/* confirm we're still not at a refresh boundary */
-	raw_spin_lock_irqsave(&cfs_b->lock, flags);
-	cfs_b->slack_started = false;
+    /* confirm we're still not at a refresh boundary */
+    // 确认我们仍然不在刷新边界
+    raw_spin_lock_irqsave(&cfs_b->lock, flags);
+    cfs_b->slack_started = false;
 
-	if (runtime_refresh_within(cfs_b, min_bandwidth_expiration)) {
-		raw_spin_unlock_irqrestore(&cfs_b->lock, flags);
-		return;
-	}
+    if (runtime_refresh_within(cfs_b, min_bandwidth_expiration)) {
+        raw_spin_unlock_irqrestore(&cfs_b->lock, flags);
+        return;
+    }
 
-	if (cfs_b->quota != RUNTIME_INF && cfs_b->runtime > slice)
-		runtime = cfs_b->runtime;
+    if (cfs_b->quota != RUNTIME_INF && cfs_b->runtime > slice)
+        runtime = cfs_b->runtime;
 
-	raw_spin_unlock_irqrestore(&cfs_b->lock, flags);
+    raw_spin_unlock_irqrestore(&cfs_b->lock, flags);
 
-	if (!runtime)
-		return;
+    if (!runtime)
+        return;
 
-	distribute_cfs_runtime(cfs_b);
+    distribute_cfs_runtime(cfs_b); // 分配 CFS 运行时间
 }
 
 /*
@@ -6485,22 +6557,25 @@ static void sync_throttle(struct task_group *tg, int cpu)
 }
 
 /* conditionally throttle active cfs_rq's from put_prev_entity() */
+// 有条件地限制来自 put_prev_entity() 的活动 cfs_rq
 static bool check_cfs_rq_runtime(struct cfs_rq *cfs_rq)
 {
-	if (!cfs_bandwidth_used())
-		return false;
+    if (!cfs_bandwidth_used())
+        return false; // 如果没有使用 CFS 带宽，则返回 false
 
-	if (likely(!cfs_rq->runtime_enabled || cfs_rq->runtime_remaining > 0))
-		return false;
+    //判断是不是时间余额耗尽
+    if (likely(!cfs_rq->runtime_enabled || cfs_rq->runtime_remaining > 0))
+        return false; // 如果运行时间未启用或剩余运行时间大于 0，则返回 false
 
-	/*
-	 * it's possible for a throttled entity to be forced into a running
-	 * state (e.g. set_curr_task), in this case we're finished.
-	 */
-	if (cfs_rq_throttled(cfs_rq))
-		return true;
+    /*
+     * it's possible for a throttled entity to be forced into a running
+     * state (e.g. set_curr_task), in this case we're finished.
+     */
+    // 被限制的实体可能被强制进入运行状态（例如 set_curr_task），在这种情况下，我们完成。
+    if (cfs_rq_throttled(cfs_rq))
+        return true; // 如果 cfs_rq 已被限制，则返回 true
 
-	return throttle_cfs_rq(cfs_rq);
+    return throttle_cfs_rq(cfs_rq); // 限制 cfs_rq 并返回结果
 }
 
 static enum hrtimer_restart sched_cfs_slack_timer(struct hrtimer *timer)
@@ -6570,25 +6645,27 @@ static enum hrtimer_restart sched_cfs_period_timer(struct hrtimer *timer)
 	return idle ? HRTIMER_NORESTART : HRTIMER_RESTART;
 }
 
+//设置两个runtime充值定时器的回调函数，并且初始化
 void init_cfs_bandwidth(struct cfs_bandwidth *cfs_b, struct cfs_bandwidth *parent)
 {
-	raw_spin_lock_init(&cfs_b->lock);
-	cfs_b->runtime = 0;
-	cfs_b->quota = RUNTIME_INF;
-	cfs_b->period = ns_to_ktime(default_cfs_period());
-	cfs_b->burst = 0;
-	cfs_b->hierarchical_quota = parent ? parent->hierarchical_quota : RUNTIME_INF;
+    raw_spin_lock_init(&cfs_b->lock); // 初始化自旋锁
+    cfs_b->runtime = 0; // 初始化运行时间为 0
+    cfs_b->quota = RUNTIME_INF; // 初始化配额为无限
+    cfs_b->period = ns_to_ktime(default_cfs_period()); // 初始化周期
+    cfs_b->burst = 0; // 初始化突发时间为 0
+    cfs_b->hierarchical_quota = parent ? parent->hierarchical_quota : RUNTIME_INF; // 初始化层次配额
 
-	INIT_LIST_HEAD(&cfs_b->throttled_cfs_rq);
-	hrtimer_init(&cfs_b->period_timer, CLOCK_MONOTONIC, HRTIMER_MODE_ABS_PINNED);
-	cfs_b->period_timer.function = sched_cfs_period_timer;
+    INIT_LIST_HEAD(&cfs_b->throttled_cfs_rq); // 初始化限制的 CFS 运行队列列表
+    hrtimer_init(&cfs_b->period_timer, CLOCK_MONOTONIC, HRTIMER_MODE_ABS_PINNED); // 初始化周期定时器
+    cfs_b->period_timer.function = sched_cfs_period_timer; // 设置周期定时器的回调函数
 
-	/* Add a random offset so that timers interleave */
-	hrtimer_set_expires(&cfs_b->period_timer,
-			    get_random_u32_below(cfs_b->period));
-	hrtimer_init(&cfs_b->slack_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
-	cfs_b->slack_timer.function = sched_cfs_slack_timer;
-	cfs_b->slack_started = false;
+    /* Add a random offset so that timers interleave */
+    // 添加一个随机偏移量，以便定时器交错
+    hrtimer_set_expires(&cfs_b->period_timer,
+                get_random_u32_below(cfs_b->period));
+    hrtimer_init(&cfs_b->slack_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL); // 初始化松弛定时器
+    cfs_b->slack_timer.function = sched_cfs_slack_timer; // 设置松弛定时器的回调函数
+    cfs_b->slack_started = false; // 初始化松弛定时器的启动状态
 }
 
 static void init_cfs_rq_runtime(struct cfs_rq *cfs_rq)
@@ -6600,14 +6677,14 @@ static void init_cfs_rq_runtime(struct cfs_rq *cfs_rq)
 
 void start_cfs_bandwidth(struct cfs_bandwidth *cfs_b)
 {
-	lockdep_assert_held(&cfs_b->lock);
+    lockdep_assert_held(&cfs_b->lock); // 确保持有 cfs_b 的锁
 
-	if (cfs_b->period_active)
-		return;
+    if (cfs_b->period_active)
+        return; // 如果周期定时器已经激活，则返回
 
-	cfs_b->period_active = 1;
-	hrtimer_forward_now(&cfs_b->period_timer, cfs_b->period);
-	hrtimer_start_expires(&cfs_b->period_timer, HRTIMER_MODE_ABS_PINNED);
+    cfs_b->period_active = 1; // 设置周期定时器为激活状态
+    hrtimer_forward_now(&cfs_b->period_timer, cfs_b->period); // 将周期定时器向前推进一个周期
+    hrtimer_start_expires(&cfs_b->period_timer, HRTIMER_MODE_ABS_PINNED); // 启动周期定时器
 }
 
 static void destroy_cfs_bandwidth(struct cfs_bandwidth *cfs_b)
@@ -7081,111 +7158,126 @@ static void set_next_buddy(struct sched_entity *se);
  *  0 - dequeue throttled
  *  1 - dequeue complete
  */
+// 基本上与 dequeue_task_fair() 类似，但它可以处理 dequeue_entity() 在中途失败并稍后恢复出队的情况。
+//
+// 返回值：
+// -1 - 出队延迟
+//  0 - 出队受限
+//  1 - 出队完成
 static int dequeue_entities(struct rq *rq, struct sched_entity *se, int flags)
 {
-	bool was_sched_idle = sched_idle_rq(rq);
-	int rq_h_nr_running = rq->cfs.h_nr_running;
-	bool task_sleep = flags & DEQUEUE_SLEEP;
-	bool task_delayed = flags & DEQUEUE_DELAYED;
-	struct task_struct *p = NULL;
-	int idle_h_nr_running = 0;
-	int h_nr_running = 0;
-	struct cfs_rq *cfs_rq;
-	u64 slice = 0;
+    bool was_sched_idle = sched_idle_rq(rq); // 记录运行队列是否处于空闲状态
+    int rq_h_nr_running = rq->cfs.h_nr_running; // 记录运行队列中的 CFS 任务数量
+    bool task_sleep = flags & DEQUEUE_SLEEP; // 检查是否为睡眠任务
+    bool task_delayed = flags & DEQUEUE_DELAYED; // 检查是否为延迟任务
+    struct task_struct *p = NULL;
+    int idle_h_nr_running = 0;
+    int h_nr_running = 0;
+    struct cfs_rq *cfs_rq;
+    u64 slice = 0;
 
-	if (entity_is_task(se)) {
-		p = task_of(se);
-		h_nr_running = 1;
-		idle_h_nr_running = task_has_idle_policy(p);
-	} else {
-		cfs_rq = group_cfs_rq(se);
-		slice = cfs_rq_min_slice(cfs_rq);
-	}
+    if (entity_is_task(se)) {
+        p = task_of(se); // 获取调度实体对应的任务
+        h_nr_running = 1;
+        idle_h_nr_running = task_has_idle_policy(p); // 检查任务是否为空闲策略
+    } else {
+        cfs_rq = group_cfs_rq(se); // 获取调度实体所属的 CFS 运行队列
+        slice = cfs_rq_min_slice(cfs_rq); // 获取 CFS 运行队列的最小时间片
+    }
 
-	for_each_sched_entity(se) {
-		cfs_rq = cfs_rq_of(se);
+    for_each_sched_entity(se) {
+        cfs_rq = cfs_rq_of(se); // 获取调度实体所属的 CFS 运行队列
 
-		if (!dequeue_entity(cfs_rq, se, flags)) {
-			if (p && &p->se == se)
-				return -1;
+        if (!dequeue_entity(cfs_rq, se, flags)) {
+            if (p && &p->se == se)
+                return -1; // 如果从红黑树中移除任务失败，则返回 -1
 
-			break;
-		}
+            break;
+        }
 
-		cfs_rq->h_nr_running -= h_nr_running;
-		cfs_rq->idle_h_nr_running -= idle_h_nr_running;
+        cfs_rq->h_nr_running -= h_nr_running; // 更新 CFS 运行队列中的任务数量
+        cfs_rq->idle_h_nr_running -= idle_h_nr_running; // 更新 CFS 运行队列中的空闲任务数量
 
-		if (cfs_rq_is_idle(cfs_rq))
-			idle_h_nr_running = h_nr_running;
+        if (cfs_rq_is_idle(cfs_rq))
+            idle_h_nr_running = h_nr_running;
 
-		/* end evaluation on encountering a throttled cfs_rq */
-		if (cfs_rq_throttled(cfs_rq))
-			return 0;
+        /* end evaluation on encountering a throttled cfs_rq */
+        // 如果遇到受限的 CFS 运行队列，则结束评估
+        if (cfs_rq_throttled(cfs_rq))
+            return 0;
 
-		/* Don't dequeue parent if it has other entities besides us */
-		if (cfs_rq->load.weight) {
-			slice = cfs_rq_min_slice(cfs_rq);
+        /* Don't dequeue parent if it has other entities besides us */
+        // 如果父级有其他实体，则不出队父级
+        if (cfs_rq->load.weight) {
+            slice = cfs_rq_min_slice(cfs_rq);
 
-			/* Avoid re-evaluating load for this entity: */
-			se = parent_entity(se);
-			/*
-			 * Bias pick_next to pick a task from this cfs_rq, as
-			 * p is sleeping when it is within its sched_slice.
-			 */
-			if (task_sleep && se && !throttled_hierarchy(cfs_rq))
-				set_next_buddy(se);
-			break;
-		}
-		flags |= DEQUEUE_SLEEP;
-		flags &= ~(DEQUEUE_DELAYED | DEQUEUE_SPECIAL);
-	}
+            /* Avoid re-evaluating load for this entity: */
+            // 避免重新评估此实体的负载：
+            se = parent_entity(se);
+            /*
+             * Bias pick_next to pick a task from this cfs_rq, as
+             * p is sleeping when it is within its sched_slice.
+             */
+            // 偏向于从此 cfs_rq 中选择下一个任务，因为 p 在其调度时间片内处于睡眠状态。
+            if (task_sleep && se && !throttled_hierarchy(cfs_rq))
+                set_next_buddy(se);
+            break;
+        }
+        flags |= DEQUEUE_SLEEP;
+        flags &= ~(DEQUEUE_DELAYED | DEQUEUE_SPECIAL);
+    }
 
-	for_each_sched_entity(se) {
-		cfs_rq = cfs_rq_of(se);
+    for_each_sched_entity(se) {
+        cfs_rq = cfs_rq_of(se); // 获取调度实体所属的 CFS 运行队列
 
-		update_load_avg(cfs_rq, se, UPDATE_TG);
-		se_update_runnable(se);
-		update_cfs_group(se);
+        update_load_avg(cfs_rq, se, UPDATE_TG); // 更新负载平均值
+        se_update_runnable(se); // 更新调度实体的可运行状态
+        update_cfs_group(se); // 更新 CFS 组
 
-		se->slice = slice;
-		slice = cfs_rq_min_slice(cfs_rq);
+        se->slice = slice;
+        slice = cfs_rq_min_slice(cfs_rq);
 
-		cfs_rq->h_nr_running -= h_nr_running;
-		cfs_rq->idle_h_nr_running -= idle_h_nr_running;
+        cfs_rq->h_nr_running -= h_nr_running; // 更新 CFS 运行队列中的任务数量
+        cfs_rq->idle_h_nr_running -= idle_h_nr_running; // 更新 CFS 运行队列中的空闲任务数量
 
-		if (cfs_rq_is_idle(cfs_rq))
-			idle_h_nr_running = h_nr_running;
+        if (cfs_rq_is_idle(cfs_rq))
+            idle_h_nr_running = h_nr_running;
 
-		/* end evaluation on encountering a throttled cfs_rq */
-		if (cfs_rq_throttled(cfs_rq))
-			return 0;
-	}
+        /* end evaluation on encountering a throttled cfs_rq */
+        // 如果遇到受限的 CFS 运行队列，则结束评估
+        if (cfs_rq_throttled(cfs_rq))
+            return 0;
+    }
 
-	sub_nr_running(rq, h_nr_running);
+    sub_nr_running(rq, h_nr_running); // 减少运行队列中的任务数量
 
-	if (rq_h_nr_running && !rq->cfs.h_nr_running)
-		dl_server_stop(&rq->fair_server);
+    if (rq_h_nr_running && !rq->cfs.h_nr_running)
+        dl_server_stop(&rq->fair_server); // 停止公平服务器
 
-	/* balance early to pull high priority tasks */
-	if (unlikely(!was_sched_idle && sched_idle_rq(rq)))
-		rq->next_balance = jiffies;
+    /* balance early to pull high priority tasks */
+    // 提前平衡以拉取高优先级任务
+    if (unlikely(!was_sched_idle && sched_idle_rq(rq)))
+        rq->next_balance = jiffies;
 
-	if (p && task_delayed) {
-		SCHED_WARN_ON(!task_sleep);
-		SCHED_WARN_ON(p->on_rq != 1);
+    if (p && task_delayed) {
+        SCHED_WARN_ON(!task_sleep);
+        SCHED_WARN_ON(p->on_rq != 1);
 
-		/* Fix-up what dequeue_task_fair() skipped */
-		hrtick_update(rq);
+        /* Fix-up what dequeue_task_fair() skipped */
+        // 修正 dequeue_task_fair() 跳过的内容
+        hrtick_update(rq);
 
-		/*
-		 * Fix-up what block_task() skipped.
-		 *
-		 * Must be last, @p might not be valid after this.
-		 */
-		__block_task(rq, p);
-	}
+        /*
+         * Fix-up what block_task() skipped.
+         *
+         * Must be last, @p might not be valid after this.
+         */
+        // 修正 block_task() 跳过的内容。
+        // 必须是最后一个，@p 之后可能无效。
+        __block_task(rq, p);
+    }
 
-	return 1;
+    return 1;
 }
 
 /*
@@ -7193,21 +7285,23 @@ static int dequeue_entities(struct rq *rq, struct sched_entity *se, int flags)
  * decreased. We remove the task from the rbtree and
  * update the fair scheduling stats:
  */
+// 在 nr_running 减少之前调用 dequeue_task 方法。我们将任务从红黑树中移除并更新公平调度统计信息：
 static bool dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 {
-	if (!(p->se.sched_delayed && (task_on_rq_migrating(p) || (flags & DEQUEUE_SAVE))))
-		util_est_dequeue(&rq->cfs, p);
+    if (!(p->se.sched_delayed && (task_on_rq_migrating(p) || (flags & DEQUEUE_SAVE))))
+        util_est_dequeue(&rq->cfs, p); // 更新任务的估计利用率
 
-	util_est_update(&rq->cfs, p, flags & DEQUEUE_SLEEP);
-	if (dequeue_entities(rq, &p->se, flags) < 0)
-		return false;
+    util_est_update(&rq->cfs, p, flags & DEQUEUE_SLEEP); // 更新任务的估计利用率
+    if (dequeue_entities(rq, &p->se, flags) < 0)
+        return false; // 如果从红黑树中移除任务失败，则返回 false
 
-	/*
-	 * Must not reference @p after dequeue_entities(DEQUEUE_DELAYED).
-	 */
+    /*
+     * Must not reference @p after dequeue_entities(DEQUEUE_DELAYED).
+     */
+    // 在 dequeue_entities(DEQUEUE_DELAYED) 之后不得引用 @p。
 
-	hrtick_update(rq);
-	return true;
+    hrtick_update(rq); // 更新高分辨率定时器
+    return true;
 }
 
 #ifdef CONFIG_SMP
@@ -8847,29 +8941,30 @@ preempt:
 
 static struct task_struct *pick_task_fair(struct rq *rq)
 {
-	struct sched_entity *se;
-	struct cfs_rq *cfs_rq;
+    struct sched_entity *se;
+    struct cfs_rq *cfs_rq;
 
 again:
-	cfs_rq = &rq->cfs;
-	if (!cfs_rq->nr_running)
-		return NULL;
+    cfs_rq = &rq->cfs;
+    if (!cfs_rq->nr_running)
+        return NULL; // 如果没有正在运行的任务，返回 NULL
 
-	do {
-		/* Might not have done put_prev_entity() */
-		if (cfs_rq->curr && cfs_rq->curr->on_rq)
-			update_curr(cfs_rq);
+    do {
+        /* Might not have done put_prev_entity() */
+        // 可能尚未执行 put_prev_entity()
+        if (cfs_rq->curr && cfs_rq->curr->on_rq)
+            update_curr(cfs_rq); // 更新当前任务的运行时间
 
-		if (unlikely(check_cfs_rq_runtime(cfs_rq)))
-			goto again;
+        if (unlikely(check_cfs_rq_runtime(cfs_rq)))
+            goto again; // 如果 cfs_rq 的运行时间不足，重新选择任务
 
-		se = pick_next_entity(rq, cfs_rq);
-		if (!se)
-			goto again;
-		cfs_rq = group_cfs_rq(se);
-	} while (cfs_rq);
+        se = pick_next_entity(rq, cfs_rq); // 选择下一个调度实体
+        if (!se)
+            goto again; // 如果没有选择到调度实体，重新选择任务
+        cfs_rq = group_cfs_rq(se); // 获取调度实体所属的 cfs_rq
+    } while (cfs_rq);
 
-	return task_of(se);
+    return task_of(se); // 返回调度实体对应的任务
 }
 
 static void __set_next_task_fair(struct rq *rq, struct task_struct *p, bool first);
@@ -8878,89 +8973,96 @@ static void set_next_task_fair(struct rq *rq, struct task_struct *p, bool first)
 struct task_struct *
 pick_next_task_fair(struct rq *rq, struct task_struct *prev, struct rq_flags *rf)
 {
-	struct sched_entity *se;
-	struct task_struct *p;
-	int new_tasks;
+    struct sched_entity *se;
+    struct task_struct *p;
+    int new_tasks;
 
 again:
-	p = pick_task_fair(rq);
-	if (!p)
-		goto idle;
-	se = &p->se;
+    p = pick_task_fair(rq); // 选择下一个要运行的任务
+    if (!p)
+        goto idle; // 如果没有任务可运行，进入空闲状态
+    se = &p->se;
 
+//编译开关 CONFIG_FAIR_GROUP_SCHED会传递给宏，预处理器指令，在编译前对代码进行替换或条件编译
 #ifdef CONFIG_FAIR_GROUP_SCHED
-	if (prev->sched_class != &fair_sched_class)
-		goto simple;
+    if (prev->sched_class != &fair_sched_class)
+        goto simple; // 如果前一个任务的调度类不是 fair_sched_class，直接切换任务
 
-	__put_prev_set_next_dl_server(rq, prev, p);
+    __put_prev_set_next_dl_server(rq, prev, p); // 设置下一个调度类
 
-	/*
-	 * Because of the set_next_buddy() in dequeue_task_fair() it is rather
-	 * likely that a next task is from the same cgroup as the current.
-	 *
-	 * Therefore attempt to avoid putting and setting the entire cgroup
-	 * hierarchy, only change the part that actually changes.
-	 *
-	 * Since we haven't yet done put_prev_entity and if the selected task
-	 * is a different task than we started out with, try and touch the
-	 * least amount of cfs_rqs.
-	 */
+    /*
+     * Because of the set_next_buddy() in dequeue_task_fair() it is rather
+     * likely that a next task is from the same cgroup as the current.
+     *
+     * Therefore attempt to avoid putting and setting the entire cgroup
+     * hierarchy, only change the part that actually changes.
+     *
+     * Since we haven't yet done put_prev_entity and if the selected task
+     * is a different task than we started out with, try and touch the
+     * least amount of cfs_rqs.
+     */
+    // 由于在 dequeue_task_fair() 中的 set_next_buddy()，下一个任务很可能与当前任务来自同一个 cgroup。
+    // 因此，尝试避免放置和设置整个 cgroup 层次结构，只更改实际更改的部分。
+    // 由于我们尚未执行 put_prev_entity，如果所选任务与我们开始时的任务不同，请尝试触及最少数量的 cfs_rqs。
 	if (prev != p) {
-		struct sched_entity *pse = &prev->se;
-		struct cfs_rq *cfs_rq;
+    struct sched_entity *pse = &prev->se;
+    struct cfs_rq *cfs_rq;
 
-		while (!(cfs_rq = is_same_group(se, pse))) {
-			int se_depth = se->depth;
-			int pse_depth = pse->depth;
+    while (!(cfs_rq = is_same_group(se, pse))) {
+        int se_depth = se->depth;
+        int pse_depth = pse->depth;
 
-			if (se_depth <= pse_depth) {
-				put_prev_entity(cfs_rq_of(pse), pse);
-				pse = parent_entity(pse);
-			}
-			if (se_depth >= pse_depth) {
-				set_next_entity(cfs_rq_of(se), se);
-				se = parent_entity(se);
-			}
-		}
+        if (se_depth <= pse_depth) {
+            put_prev_entity(cfs_rq_of(pse), pse); // 将前一个实体从运行队列中移除
+            pse = parent_entity(pse); // 获取前一个实体的父实体
+        }
+        if (se_depth >= pse_depth) {
+            set_next_entity(cfs_rq_of(se), se); // 将下一个实体添加到运行队列中
+            se = parent_entity(se); // 获取下一个实体的父实体
+        }
+    }
 
-		put_prev_entity(cfs_rq, pse);
-		set_next_entity(cfs_rq, se);
+    put_prev_entity(cfs_rq, pse); // 将前一个实体从运行队列中移除
+    set_next_entity(cfs_rq, se); // 将下一个实体添加到运行队列中
 
-		__set_next_task_fair(rq, p, true);
-	}
+    __set_next_task_fair(rq, p, true); // 设置下一个 fair 任务
+}
 
-	return p;
+    return p;
 
 simple:
 #endif
-	put_prev_set_next_task(rq, prev, p);
-	return p;
+    put_prev_set_next_task(rq, prev, p); // 切换到下一个任务
+    return p;
 
 idle:
-	if (!rf)
-		return NULL;
+    if (!rf)
+        return NULL; // 如果没有 rq_flags，返回 NULL
 
-	new_tasks = sched_balance_newidle(rq, rf);
+    new_tasks = sched_balance_newidle(rq, rf); // 尝试在空闲状态下进行负载均衡
 
-	/*
-	 * Because sched_balance_newidle() releases (and re-acquires) rq->lock, it is
-	 * possible for any higher priority task to appear. In that case we
-	 * must re-start the pick_next_entity() loop.
-	 */
-	if (new_tasks < 0)
-		return RETRY_TASK;
+    /*
+     * Because sched_balance_newidle() releases (and re-acquires) rq->lock, it is
+     * possible for any higher priority task to appear. In that case we
+     * must re-start the pick_next_entity() loop.
+     */
+    // 由于 sched_balance_newidle() 释放（并重新获取）rq->lock，可能会出现任何更高优先级的任务。在这种情况下，我们必须重新启动 pick_next_entity() 循环。
+    if (new_tasks < 0)
+        return RETRY_TASK; // 如果有更高优先级的任务出现，重试任务选择
 
-	if (new_tasks > 0)
-		goto again;
+    if (new_tasks > 0)
+        goto again; // 如果有新任务，重新选择任务
 
-	/*
-	 * rq is about to be idle, check if we need to update the
-	 * lost_idle_time of clock_pelt
-	 */
-	update_idle_rq_clock_pelt(rq);
+    /*
+     * rq is about to be idle, check if we need to update the
+     * lost_idle_time of clock_pelt
+     */
+    // rq 即将进入空闲状态，检查是否需要更新 clock_pelt 的 lost_idle_time
+    update_idle_rq_clock_pelt(rq);
 
-	return NULL;
+    return NULL; // 返回 NULL 表示进入空闲状态
 }
+
 
 static struct task_struct *__pick_next_task_fair(struct rq *rq, struct task_struct *prev)
 {

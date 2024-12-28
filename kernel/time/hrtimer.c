@@ -1279,30 +1279,38 @@ static int __hrtimer_start_range_ns(struct hrtimer *timer, ktime_t tim,
  *		relative (HRTIMER_MODE_REL), and pinned (HRTIMER_MODE_PINNED);
  *		softirq based mode is considered for debug purpose only!
  */
+// hrtimer_start_range_ns - (重新)启动高分辨率定时器
+// @timer: 要添加的定时器
+// @tim: 到期时间
+// @delta_ns: 定时器的“松弛”范围
+// @mode: 定时器模式：绝对时间 (HRTIMER_MODE_ABS) 或相对时间 (HRTIMER_MODE_REL)，以及固定模式 (HRTIMER_MODE_PINNED)；
+//        基于软中断的模式仅用于调试目的
 void hrtimer_start_range_ns(struct hrtimer *timer, ktime_t tim,
-			    u64 delta_ns, const enum hrtimer_mode mode)
+                u64 delta_ns, const enum hrtimer_mode mode)
 {
-	struct hrtimer_clock_base *base;
-	unsigned long flags;
+    struct hrtimer_clock_base *base;
+    unsigned long flags;
 
-	if (WARN_ON_ONCE(!timer->function))
-		return;
-	/*
-	 * Check whether the HRTIMER_MODE_SOFT bit and hrtimer.is_soft
-	 * match on CONFIG_PREEMPT_RT = n. With PREEMPT_RT check the hard
-	 * expiry mode because unmarked timers are moved to softirq expiry.
-	 */
-	if (!IS_ENABLED(CONFIG_PREEMPT_RT))
-		WARN_ON_ONCE(!(mode & HRTIMER_MODE_SOFT) ^ !timer->is_soft);
-	else
-		WARN_ON_ONCE(!(mode & HRTIMER_MODE_HARD) ^ !timer->is_hard);
+    if (WARN_ON_ONCE(!timer->function))
+        return;
+    /*
+     * Check whether the HRTIMER_MODE_SOFT bit and hrtimer.is_soft
+     * match on CONFIG_PREEMPT_RT = n. With PREEMPT_RT check the hard
+     * expiry mode because unmarked timers are moved to softirq expiry.
+     */
+    // 检查 HRTIMER_MODE_SOFT 位和 hrtimer.is_soft 是否匹配 CONFIG_PREEMPT_RT = n。
+    // 对于 PREEMPT_RT，检查硬到期模式，因为未标记的定时器会移动到软中断到期。
+    if (!IS_ENABLED(CONFIG_PREEMPT_RT))
+        WARN_ON_ONCE(!(mode & HRTIMER_MODE_SOFT) ^ !timer->is_soft);
+    else
+        WARN_ON_ONCE(!(mode & HRTIMER_MODE_HARD) ^ !timer->is_hard);
 
-	base = lock_hrtimer_base(timer, &flags);
+    base = lock_hrtimer_base(timer, &flags); // 锁定高分辨率定时器的基准
 
-	if (__hrtimer_start_range_ns(timer, tim, delta_ns, mode, base))
-		hrtimer_reprogram(timer, true);
+    if (__hrtimer_start_range_ns(timer, tim, delta_ns, mode, base))
+        hrtimer_reprogram(timer, true); // 重新编程高分辨率定时器
 
-	unlock_hrtimer_base(timer, &flags);
+    unlock_hrtimer_base(timer, &flags); // 解锁高分辨率定时器的基准
 }
 EXPORT_SYMBOL_GPL(hrtimer_start_range_ns);
 
