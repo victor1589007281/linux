@@ -510,6 +510,550 @@ struct fq_flow {
 };
 ```
 
+### **令牌桶算法详解与实现**
+
+令牌桶算法是网络流量控制中最经典和实用的算法之一，广泛应用于Linux网络调度器中：
+
+```c
+// 令牌桶核心实现 - net/sched/sch_tbf.c
+
+/*
+ * 令牌桶算法核心概念：
+ * - 令牌以固定速率产生并存入桶中
+ * - 数据包需要消耗令牌才能通过
+ * - 桶的容量决定了突发流量的大小
+ * - 令牌产生速率决定了平均速率
+ */
+
+// 令牌桶流量控制器数据结构
+struct tbf_sched_data {
+    // 令牌桶参数
+    struct qfq_bucket ptokens;         // 峰值令牌桶
+    struct qfq_bucket tokens;          // 基础令牌桶
+    
+    // 速率控制参数
+    struct psched_ratecfg rate;        // 基础速率配置
+    struct psched_ratecfg peak;        // 峰值速率配置
+    u32 limit;                         // 队列长度限制
+    u32 buffer;                        // 令牌桶大小（字节）
+    u32 mtu;                          // 最大传输单元
+    
+    // 时间管理
+    s64 tokens_time;                   // 令牌更新时间
+    s64 ptokens_time;                  // 峰值令牌更新时间
+    
+    // 队列管理
+    struct Qdisc *qdisc;              // 内部队列纪律
+    struct qdisc_watchdog watchdog;   // 看门狗定时器
+    
+    // 统计信息
+    struct tc_tbf_qopt_offload_replace_params last_opt; // 最后配置参数
+    struct rcu_head rcu;               // RCU回收
+};
+
+// 令牌桶结构定义
+struct qfq_bucket {
+    s64 tokens;                        // 当前令牌数
+    s64 tokens_per_sec;                // 每秒令牌数
+    u32 lmax;                          // 最大令牌数
+};
+
+// 令牌桶算法的核心：令牌更新函数
+static void tbf_update_tokens(struct tbf_sched_data *q, s64 now)
+{
+    s64 toks, ptoks = 0;
+    s64 diff = now - q->tokens_time;
+    
+    if (diff > 0) {
+        // 计算新增令牌数量（基于时间差和速率）
+        toks = div64_s64(diff * q->rate.rate_bytes_ps, NSEC_PER_SEC);
+        
+        if (toks > q->buffer) {
+            // 限制令牌数量不超过桶容量
+            toks = q->buffer;
+        }
+        
+        // 更新令牌数量
+        q->tokens.tokens = min_t(s64, q->buffer, q->tokens.tokens + toks);
+        q->tokens_time = now;
+        
+        // 如果配置了峰值限制，同时更新峰值令牌
+        if (q->peak.rate_bytes_ps) {
+            ptoks = div64_s64(diff * q->peak.rate_bytes_ps, NSEC_PER_SEC);
+            if (ptoks > q->mtu) {
+                ptoks = q->mtu;
+            }
+            q->ptokens.tokens = min_t(s64, q->mtu, q->ptokens.tokens + ptoks);
+            q->ptokens_time = now;
+        }
+    }
+}
+
+// 令牌桶调度核心算法
+static struct sk_buff *tbf_dequeue(struct Qdisc *sch)
+{
+    struct tbf_sched_data *q = qdisc_priv(sch);
+    struct sk_buff *skb;
+    s64 now = ktime_get_ns();
+    long toks, ptoks = 0;
+    unsigned int len;
+    
+    // 更新令牌桶
+    tbf_update_tokens(q, now);
+    
+    // 从内部队列获取数据包
+    skb = q->qdisc->ops->peek(q->qdisc);
+    if (skb) {
+        len = qdisc_pkt_len(skb);
+        toks = q->tokens.tokens;
+        
+        // 检查是否有足够的基础令牌
+        if (toks >= len) {
+            // 检查峰值令牌（如果配置了峰值限制）
+            if (q->peak.rate_bytes_ps) {
+                ptoks = q->ptokens.tokens;
+                if (ptoks < len) {
+                    // 峰值令牌不足，计算等待时间
+                    goto delay_packet;
+                }
+                ptoks -= len;
+                q->ptokens.tokens = ptoks;
+            }
+            
+            // 消耗基础令牌
+            toks -= len;
+            q->tokens.tokens = toks;
+            
+            // 从内部队列取出数据包
+            skb = qdisc_dequeue_peeked(q->qdisc);
+            if (unlikely(!skb)) {
+                return NULL;
+            }
+            
+            // 更新统计信息
+            qdisc_qstats_backlog_dec(sch, skb);
+            sch->q.qlen--;
+            qdisc_bstats_update(sch, skb);
+            
+            return skb;
+        }
+
+delay_packet:
+        // 令牌不足，计算延迟时间
+        {
+            s64 delay_ns;
+            long needed_tokens = len - toks;
+            
+            if (q->peak.rate_bytes_ps && ptoks < len) {
+                // 需要等待峰值令牌
+                delay_ns = div64_s64((len - ptoks) * NSEC_PER_SEC, 
+                                    q->peak.rate_bytes_ps);
+            } else {
+                // 需要等待基础令牌
+                delay_ns = div64_s64(needed_tokens * NSEC_PER_SEC, 
+                                    q->rate.rate_bytes_ps);
+            }
+            
+            // 设置看门狗定时器
+            qdisc_watchdog_schedule_ns(&q->watchdog, now + delay_ns);
+        }
+    }
+    
+    return NULL;
+}
+
+// 令牌桶数据包入队
+static int tbf_enqueue(struct sk_buff *skb, struct Qdisc *sch,
+                      struct sk_buff **to_free)
+{
+    struct tbf_sched_data *q = qdisc_priv(sch);
+    unsigned int len = qdisc_pkt_len(skb);
+    int ret;
+    
+    // 检查队列长度限制
+    if (qdisc_pkt_len(skb) > q->buffer) {
+        // 数据包大小超过令牌桶容量，直接丢弃
+        qdisc_qstats_drop(sch);
+        __qdisc_drop(skb, to_free);
+        return NET_XMIT_DROP;
+    }
+    
+    // 将数据包加入内部队列
+    ret = qdisc_enqueue(skb, q->qdisc, to_free);
+    if (ret != NET_XMIT_SUCCESS) {
+        if (net_xmit_drop_count(ret)) {
+            qdisc_qstats_drop(sch);
+        }
+        return ret;
+    }
+    
+    // 更新队列统计
+    sch->q.qlen++;
+    qdisc_qstats_backlog_inc(sch, skb);
+    
+    return NET_XMIT_SUCCESS;
+}
+
+// 高级令牌桶：支持多级速率控制
+struct tbf_multi_rate {
+    struct tbf_rate_spec cir;          // 承诺信息速率
+    struct tbf_rate_spec pir;          // 峰值信息速率
+    struct tbf_rate_spec eir;          // 超额信息速率
+    
+    // 多级令牌桶
+    struct tbf_token_bucket c_bucket;   // CIR令牌桶
+    struct tbf_token_bucket p_bucket;   // PIR令牌桶  
+    struct tbf_token_bucket e_bucket;   // EIR令牌桶
+    
+    // 颜色标记
+    enum tbf_color {
+        TBF_GREEN,                      // 绿色：符合CIR
+        TBF_YELLOW,                     // 黄色：符合PIR但超过CIR
+        TBF_RED                         // 红色：超过PIR
+    } last_color;
+};
+
+// 三色标记算法（RFC2697）
+static enum tbf_color tbf_color_mark(struct tbf_multi_rate *tbf, 
+                                    unsigned int len, s64 now)
+{
+    // 更新所有令牌桶
+    tbf_update_bucket(&tbf->c_bucket, &tbf->cir, now);
+    tbf_update_bucket(&tbf->p_bucket, &tbf->pir, now);
+    
+    // 三色标记逻辑
+    if (tbf->c_bucket.tokens >= len) {
+        // CIR令牌足够，标记为绿色
+        tbf->c_bucket.tokens -= len;
+        tbf->p_bucket.tokens -= len;
+        return TBF_GREEN;
+    } else if (tbf->p_bucket.tokens >= len) {
+        // PIR令牌足够但CIR不够，标记为黄色  
+        tbf->p_bucket.tokens -= len;
+        return TBF_YELLOW;
+    } else {
+        // PIR令牌也不够，标记为红色
+        return TBF_RED;
+    }
+}
+
+// 自适应令牌桶：根据网络状况动态调整
+struct tbf_adaptive {
+    struct tbf_sched_data base;
+    
+    // 自适应参数
+    u32 min_rate;                      // 最小速率
+    u32 max_rate;                      // 最大速率
+    u32 current_rate;                  // 当前速率
+    
+    // 网络状况监测
+    u32 rtt_estimate;                  // RTT估计值
+    u32 loss_rate;                     // 丢包率
+    u32 utilization;                   // 链路利用率
+    
+    // 调整策略
+    struct {
+        u32 increase_step;             // 速率增加步长
+        u32 decrease_factor;           // 速率减少因子
+        u32 probe_interval;            // 探测间隔
+        u32 stable_threshold;          // 稳定阈值
+    } adapt_params;
+    
+    // 控制状态机
+    enum {
+        TBF_SLOW_START,                // 慢启动
+        TBF_CONGESTION_AVOIDANCE,      // 拥塞避免
+        TBF_FAST_RECOVERY,             // 快速恢复
+        TBF_PROBE_BANDWIDTH            // 带宽探测
+    } state;
+    
+    struct timer_list adapt_timer;     // 自适应定时器
+};
+
+// 自适应速率调整算法
+static void tbf_adaptive_adjust(struct tbf_adaptive *atbf)
+{
+    u32 new_rate = atbf->current_rate;
+    
+    switch (atbf->state) {
+    case TBF_SLOW_START:
+        // 慢启动阶段：指数增长
+        if (atbf->loss_rate < TBF_LOSS_THRESHOLD_LOW) {
+            new_rate = min(atbf->current_rate * 2, atbf->max_rate);
+            if (new_rate == atbf->max_rate) {
+                atbf->state = TBF_CONGESTION_AVOIDANCE;
+            }
+        } else {
+            atbf->state = TBF_FAST_RECOVERY;
+            new_rate = atbf->current_rate / 2;
+        }
+        break;
+        
+    case TBF_CONGESTION_AVOIDANCE:
+        // 拥塞避免阶段：线性增长
+        if (atbf->loss_rate < TBF_LOSS_THRESHOLD_LOW) {
+            new_rate = min(atbf->current_rate + atbf->adapt_params.increase_step,
+                          atbf->max_rate);
+        } else {
+            atbf->state = TBF_FAST_RECOVERY;
+            new_rate = atbf->current_rate * atbf->adapt_params.decrease_factor / 100;
+        }
+        break;
+        
+    case TBF_FAST_RECOVERY:
+        // 快速恢复阶段：谨慎增长
+        if (atbf->loss_rate < TBF_LOSS_THRESHOLD_LOW) {
+            new_rate = atbf->current_rate + atbf->adapt_params.increase_step / 2;
+            atbf->state = TBF_CONGESTION_AVOIDANCE;
+        }
+        break;
+        
+    case TBF_PROBE_BANDWIDTH:
+        // 带宽探测阶段
+        static int probe_direction = 1;
+        if (atbf->utilization > TBF_UTIL_THRESHOLD_HIGH) {
+            probe_direction = -1;
+        } else if (atbf->utilization < TBF_UTIL_THRESHOLD_LOW) {
+            probe_direction = 1;
+        }
+        
+        new_rate = atbf->current_rate + 
+                   probe_direction * atbf->adapt_params.increase_step;
+        new_rate = clamp(new_rate, atbf->min_rate, atbf->max_rate);
+        break;
+    }
+    
+    // 应用新速率
+    if (new_rate != atbf->current_rate) {
+        atbf->current_rate = new_rate;
+        tbf_update_rate(&atbf->base, new_rate);
+        
+        printk(KERN_DEBUG "TBF: Rate adjusted to %u bps, state=%d\n", 
+               new_rate, atbf->state);
+    }
+}
+```
+
+### **令牌桶算法在不同网络层的应用**
+
+```c
+// 令牌桶在不同层次的具体应用
+
+// 1. 网卡驱动层的硬件令牌桶
+struct hw_tbf_context {
+    struct net_device *dev;
+    
+    // 硬件寄存器配置
+    struct {
+        u32 rate_reg;                  // 速率寄存器
+        u32 burst_reg;                 // 突发寄存器
+        u32 token_reg;                 // 令牌寄存器
+        u32 control_reg;               // 控制寄存器
+    } hw_regs;
+    
+    // 硬件特性
+    bool hw_shaping_support;           // 硬件整形支持
+    u32 hw_granularity;                // 硬件粒度
+    u32 hw_max_rate;                   // 硬件最大速率
+    
+    // 软硬结合
+    struct tbf_sched_data *sw_tbf;     // 软件令牌桶备用
+};
+
+// 硬件令牌桶配置
+static int hw_tbf_configure(struct hw_tbf_context *ctx, 
+                           u32 rate, u32 burst)
+{
+    struct net_device *dev = ctx->dev;
+    
+    if (!ctx->hw_shaping_support) {
+        // 硬件不支持，使用软件实现
+        return tbf_sw_configure(ctx->sw_tbf, rate, burst);
+    }
+    
+    // 配置硬件寄存器
+    writel(rate / ctx->hw_granularity, dev->base_addr + ctx->hw_regs.rate_reg);
+    writel(burst, dev->base_addr + ctx->hw_regs.burst_reg);
+    writel(burst, dev->base_addr + ctx->hw_regs.token_reg); // 初始令牌数
+    
+    // 启用硬件整形
+    u32 control = readl(dev->base_addr + ctx->hw_regs.control_reg);
+    control |= HW_TBF_ENABLE;
+    writel(control, dev->base_addr + ctx->hw_regs.control_reg);
+    
+    return 0;
+}
+
+// 2. IP层的分组令牌桶
+struct ip_tbf_classifier {
+    struct hlist_head flow_hash[IP_TBF_HASH_SIZE];
+    
+    // 每流令牌桶
+    struct ip_flow_tbf {
+        struct hlist_node node;
+        
+        __be32 saddr, daddr;           // 源、目标IP
+        __be16 sport, dport;           // 源、目标端口
+        u8 protocol;                   // 协议
+        
+        struct tbf_sched_data tbf;     // 令牌桶
+        unsigned long last_used;       // 最后使用时间
+        
+        struct rcu_head rcu;
+    } flows[];
+};
+
+// IP层流量分类和令牌桶应用
+static int ip_tbf_classify_and_shape(struct sk_buff *skb)
+{
+    struct iphdr *iph = ip_hdr(skb);
+    struct ip_flow_tbf *flow;
+    u32 hash;
+    
+    // 计算流哈希
+    hash = jhash_3words(iph->saddr, iph->daddr, 
+                       (iph->protocol << 16) | get_ports(skb),
+                       ip_tbf_hash_rnd) & (IP_TBF_HASH_SIZE - 1);
+    
+    // 查找或创建流状态
+    flow = ip_tbf_find_flow(hash, iph);
+    if (!flow) {
+        flow = ip_tbf_create_flow(hash, iph);
+        if (!flow) {
+            return NET_XMIT_DROP;
+        }
+    }
+    
+    // 应用令牌桶整形
+    return tbf_shape_packet(&flow->tbf, skb);
+}
+
+// 3. TCP拥塞控制中的令牌桶
+struct tcp_tbf_congestion {
+    struct tcp_sock *tp;
+    
+    // 发送端令牌桶
+    struct tbf_sched_data send_tbf;
+    
+    // 接收端反馈
+    struct {
+        u32 advertised_rate;           // 接收端通告的速率
+        u32 measured_rtt;              // 测量的RTT
+        u32 recv_window;               // 接收窗口
+    } feedback;
+    
+    // 拥塞控制状态
+    enum {
+        TCP_TBF_OPEN,                  // 开放状态
+        TCP_TBF_RECOVERY,              // 恢复状态  
+        TCP_TBF_LOSS                   // 丢失状态
+    } state;
+};
+
+// TCP层令牌桶拥塞控制
+static void tcp_tbf_cong_control(struct sock *sk, u32 ack, u32 acked,
+                                int flag, const struct rate_sample *rs)
+{
+    struct tcp_tbf_congestion *tbf_ca = inet_csk_ca(sk);
+    u32 new_rate;
+    
+    // 基于RTT和丢包调整速率
+    if (flag & FLAG_ACKED) {
+        // 成功确认，可能增加速率
+        if (rs->rtt_us > 0 && rs->rtt_us < tbf_ca->feedback.measured_rtt) {
+            // RTT改善，增加速率
+            new_rate = tbf_ca->send_tbf.rate.rate_bytes_ps * 105 / 100;
+        }
+    } else if (flag & FLAG_LOST) {
+        // 发生丢包，减少速率
+        new_rate = tbf_ca->send_tbf.rate.rate_bytes_ps * 80 / 100;
+        tbf_ca->state = TCP_TBF_LOSS;
+    }
+    
+    // 应用新速率
+    if (new_rate != tbf_ca->send_tbf.rate.rate_bytes_ps) {
+        tbf_update_rate(&tbf_ca->send_tbf, new_rate);
+    }
+    
+    // 基于令牌桶调整发送窗口
+    u32 tokens = tbf_ca->send_tbf.tokens.tokens;
+    u32 inflight = tcp_packets_in_flight(tcp_sk(sk));
+    
+    if (tokens < tcp_sk(sk)->mss_cache && inflight > 0) {
+        // 令牌不足，限制发送
+        tcp_sk(sk)->snd_cwnd = min(tcp_sk(sk)->snd_cwnd, inflight);
+    }
+}
+
+// 4. 应用层的用户空间令牌桶
+struct user_tbf {
+    // 用户配置参数
+    struct {
+        u32 rate_bps;                  // 速率（位/秒）
+        u32 burst_bytes;               // 突发大小（字节）
+        u32 mtu;                       // MTU
+        int quantum;                   // 量子
+    } config;
+    
+    // 内核交互
+    int netlink_sock;                  // Netlink套接字
+    struct nl_sock *nl_sock;           // libnl套接字
+    
+    // 统计信息
+    struct tbf_stats {
+        u64 packets_shaped;            // 整形的数据包数
+        u64 bytes_shaped;              // 整形的字节数
+        u64 packets_dropped;           // 丢弃的数据包数
+        u64 tokens_generated;          // 生成的令牌数
+        u64 delays_introduced;         // 引入的延迟数
+        
+        u64 last_update_time;          // 最后更新时间
+    } stats;
+};
+
+// 用户空间令牌桶配置接口
+static int user_tbf_configure(struct user_tbf *utbf)
+{
+    struct nl_msg *msg;
+    struct tcmsg *tcm;
+    struct tc_tbf_qopt opt;
+    int ret;
+    
+    // 创建Netlink消息
+    msg = nlmsg_alloc();
+    if (!msg) return -ENOMEM;
+    
+    // 设置TC消息头
+    tcm = nlmsg_put(msg, NL_AUTO_PORT, NL_AUTO_SEQ, RTM_NEWQDISC, 
+                   sizeof(*tcm), NLM_F_CREATE | NLM_F_REPLACE);
+    tcm->tcm_family = AF_UNSPEC;
+    tcm->tcm_ifindex = utbf->ifindex;
+    tcm->tcm_handle = TC_H_ROOT;
+    tcm->tcm_parent = TC_H_ROOT;
+    
+    // 添加TBF属性
+    nla_put_string(msg, TCA_KIND, "tbf");
+    
+    // 配置TBF参数
+    opt.rate.rate = utbf->config.rate_bps / 8; // 转换为字节/秒
+    opt.rate.mpu = 0;
+    opt.rate.overhead = 0;
+    opt.buffer = utbf->config.burst_bytes;
+    opt.mtu = utbf->config.mtu;
+    opt.peakrate.rate = 0; // 不使用峰值限制
+    
+    struct nlattr *nest = nla_nest_start(msg, TCA_OPTIONS);
+    nla_put(msg, TCA_TBF_PARMS, sizeof(opt), &opt);
+    nla_nest_end(msg, nest);
+    
+    // 发送配置消息
+    ret = nl_send_auto(utbf->nl_sock, msg);
+    nlmsg_free(msg);
+    
+    return ret;
+}
+```
+
 ### 分层令牌桶(HTB)调度器
 
 ```c
@@ -1781,6 +2325,352 @@ struct netdev_rx_queue {
     atomic_t busy_poll_state;         // 忙轮询状态
 #endif
 } ____cacheline_aligned_in_smp;
+```
+
+### **不同网络层次调度的整体时序图**
+
+网络调度在不同协议层次都有各自的实现和协作机制，形成了一个完整的分层调度体系：
+
+```mermaid
+sequenceDiagram
+    participant **App** as **应用层**
+    participant **Socket** as **Socket层**  
+    participant **TCP** as **TCP层**
+    participant **IP** as **IP层**
+    participant **TC** as **流量控制(TC)**
+    participant **Qdisc** as **队列纪律**
+    participant **Driver** as **网卡驱动**
+    participant **HW** as **硬件队列**
+    participant **Wire** as **物理链路**
+    
+    Note over **App**,**Wire**: **网络分层调度完整时序流程**
+    
+    **App**->>**Socket**: **send(data, len)**
+    activate **Socket**
+    
+    **Socket**->>**Socket**: **socket缓冲区管理**
+    **Socket**->>**Socket**: **SO_SNDBUF限制检查**
+    **Socket**->>**TCP**: **tcp_sendmsg()**
+    deactivate **Socket**
+    activate **TCP**
+    
+    **TCP**->>**TCP**: **TCP拥塞控制**
+    Note right of **TCP**: **cwnd, ssthresh调整<br/>令牌桶速率控制**
+    **TCP**->>**TCP**: **分段和重传管理**
+    **TCP**->>**IP**: **ip_queue_xmit()**
+    deactivate **TCP**
+    activate **IP**
+    
+    **IP**->>**IP**: **路由查找**
+    **IP**->>**IP**: **IP层QoS标记**
+    Note right of **IP**: **DSCP, ECN标记<br/>分组分类**
+    **IP**->>**TC**: **netfilter POSTROUTING**
+    deactivate **IP**
+    activate **TC**
+    
+    **TC**->>**TC**: **流量分类器(classifier)**
+    **TC**->>**TC**: **过滤器匹配**
+    **TC**->>**Qdisc**: **enqueue to qdisc**
+    deactivate **TC**
+    activate **Qdisc**
+    
+    alt **HTB调度器**
+        **Qdisc**->>**Qdisc**: **htb_enqueue()**
+        **Qdisc**->>**Qdisc**: **分层令牌桶检查**
+        **Qdisc**->>**Qdisc**: **htb_dequeue()**
+        **Qdisc**->>**Driver**: **分发最高优先级数据包**
+    else **FQ调度器**  
+        **Qdisc**->>**Qdisc**: **fq_enqueue()**
+        **Qdisc**->>**Qdisc**: **按流分类排队**
+        **Qdisc**->>**Qdisc**: **fq_dequeue()**
+        **Qdisc**->>**Driver**: **时间轮算法选择**
+    else **TBF调度器**
+        **Qdisc**->>**Qdisc**: **tbf_enqueue()**
+        **Qdisc**->>**Qdisc**: **令牌桶算法检查**
+        **Qdisc**->>**Qdisc**: **tbf_dequeue()**
+        **Qdisc**->>**Driver**: **基于令牌数量分发**
+    else **PFIFO_FAST调度器**
+        **Qdisc**->>**Qdisc**: **pfifo_fast_enqueue()**
+        **Qdisc**->>**Qdisc**: **三优先级队列**
+        **Qdisc**->>**Qdisc**: **pfifo_fast_dequeue()**
+        **Qdisc**->>**Driver**: **严格优先级调度**
+    end
+    
+    deactivate **Qdisc**
+    activate **Driver**
+    
+    **Driver**->>**Driver**: **驱动层流量整形**
+    **Driver**->>**Driver**: **DMA描述符管理**
+    **Driver**->>**HW**: **硬件队列选择**
+    deactivate **Driver**
+    activate **HW**
+    
+    **HW**->>**HW**: **多队列硬件调度**
+    Note right of **HW**: **硬件QoS, WRR,<br/>SP优先级调度**
+    **HW**->>**Wire**: **物理传输**
+    deactivate **HW**
+    activate **Wire**
+    
+    **Wire**->>**Wire**: **信号传输**
+    **Wire**->>**HW**: **传输完成**
+    deactivate **Wire**
+    
+    **HW**->>**Driver**: **中断通知**
+    activate **Driver**
+    **Driver**->>**Qdisc**: **TX完成回调**
+    activate **Qdisc**
+    **Qdisc**->>**TC**: **统计更新**
+    activate **TC**
+    **TC**->>**IP**: **完成通知**
+    activate **IP**
+    **IP**->>**TCP**: **传输完成**
+    activate **TCP**
+    **TCP**->>**Socket**: **ACK处理/拥塞窗口调整**  
+    activate **Socket**
+    **Socket**->>**App**: **发送完成/错误返回**
+    deactivate **Socket**
+    deactivate **TCP**
+    deactivate **IP**
+    deactivate **TC**
+    deactivate **Qdisc**
+    deactivate **Driver**
+```
+
+### **不同调度算法在各网络层次的具体实现时序图**
+
+#### **1. 应用层到Socket层的调度时序**
+
+```mermaid
+sequenceDiagram
+    participant **App** as **用户应用**
+    participant **Lib** as **系统库**
+    participant **Kernel** as **内核Socket**
+    participant **Buffer** as **Socket缓冲区**
+    participant **Sched** as **进程调度器**
+    
+    Note over **App**,**Sched**: **应用层调度时序**
+    
+    **App**->>**Lib**: **send(fd, data, len, flags)**
+    **Lib**->>**Kernel**: **system call entrance**
+    activate **Kernel**
+    
+    **Kernel**->>**Buffer**: **检查发送缓冲区可用空间**
+    
+    alt **缓冲区满**
+        **Buffer**->>**Kernel**: **EAGAIN/EWOULDBLOCK**
+        **Kernel**->>**Sched**: **进程状态设为TASK_INTERRUPTIBLE**
+        **Sched**->>**Sched**: **进程调度切换**
+        **Sched**->>**Kernel**: **等待缓冲区可用事件**
+        **Buffer**->>**Kernel**: **缓冲区空间释放信号**
+        **Kernel**->>**Sched**: **唤醒进程**
+        **Sched**->>**Kernel**: **进程重新调度执行**
+    else **缓冲区可用**
+        **Kernel**->>**Buffer**: **数据复制到发送缓冲区**
+    end
+    
+    **Buffer**->>**Kernel**: **触发发送处理**
+    **Kernel**->>**Lib**: **返回发送字节数**
+    deactivate **Kernel**
+    **Lib**->>**App**: **返回结果**
+```
+
+#### **2. TCP层拥塞控制调度时序**
+
+```mermaid
+sequenceDiagram
+    participant **TCP** as **TCP发送端**
+    participant **CongCtrl** as **拥塞控制算法**
+    participant **Timer** as **定时器**
+    participant **Network** as **网络**
+    participant **Peer** as **TCP接收端**
+    
+    Note over **TCP**,**Peer**: **TCP拥塞控制调度时序**
+    
+    **TCP**->>**CongCtrl**: **tcp_write_xmit()**
+    activate **CongCtrl**
+    
+    **CongCtrl**->>**CongCtrl**: **检查拥塞窗口cwnd**
+    **CongCtrl**->>**CongCtrl**: **检查发送窗口snd_wnd**
+    
+    alt **Cubic拥塞控制**
+        **CongCtrl**->>**CongCtrl**: **cubic_update()**
+        Note right of **CongCtrl**: **W = C(t - K)³ + Wmax**
+        **CongCtrl**->>**CongCtrl**: **动态调整cwnd**
+    else **BBR拥塞控制**
+        **CongCtrl**->>**CongCtrl**: **bbr_main()**
+        Note right of **CongCtrl**: **基于RTT和带宽估计**
+        **CongCtrl**->>**CongCtrl**: **四阶段状态机调整**
+    else **Reno拥塞控制**
+        **CongCtrl**->>**CongCtrl**: **tcp_reno_cong_avoid()**
+        Note right of **CongCtrl**: **AIMD算法调整**
+    end
+    
+    **CongCtrl**->>**Network**: **发送数据包**
+    **Network**->>**Peer**: **网络传输**
+    
+    alt **正常ACK**
+        **Peer**->>**Network**: **发送ACK**
+        **Network**->>**TCP**: **接收ACK**
+        **TCP**->>**CongCtrl**: **tcp_ack_update_window()**
+        **CongCtrl**->>**CongCtrl**: **增加cwnd（慢启动/拥塞避免）**
+    else **重复ACK/丢包**
+        **Timer**->>**TCP**: **重传定时器超时**
+        **TCP**->>**CongCtrl**: **tcp_retransmit_timer()**
+        **CongCtrl**->>**CongCtrl**: **减少cwnd（快重传/快恢复）**
+    end
+    
+    deactivate **CongCtrl**
+```
+
+#### **3. IP层QoS和流量分类时序**
+
+```mermaid
+sequenceDiagram
+    participant **IP** as **IP层**
+    participant **Route** as **路由子系统**
+    participant **Netfilter** as **Netfilter框架**
+    participant **Classifier** as **流量分类器**
+    participant **Marker** as **数据包标记**
+    
+    Note over **IP**,**Marker**: **IP层QoS调度时序**
+    
+    **IP**->>**Route**: **ip_route_output_key()**
+    **Route**->>**Route**: **查找路由表**
+    **Route**->>**IP**: **返回路由信息**
+    
+    **IP**->>**Netfilter**: **NF_INET_LOCAL_OUT**
+    activate **Netfilter**
+    
+    **Netfilter**->>**Classifier**: **tc_classify()**
+    activate **Classifier**
+    
+    **Classifier**->>**Classifier**: **u32分类器匹配**
+    Note right of **Classifier**: **基于IP头字段匹配：<br/>src/dst IP, ports, TOS**
+    
+    alt **匹配高优先级类**
+        **Classifier**->>**Marker**: **设置skb->priority = HIGH**
+        **Marker**->>**Marker**: **设置DSCP = EF(101110)**
+    else **匹配中优先级类**
+        **Classifier**->>**Marker**: **设置skb->priority = MEDIUM**  
+        **Marker**->>**Marker**: **设置DSCP = AF31(011010)**
+    else **默认类**
+        **Classifier**->>**Marker**: **设置skb->priority = DEFAULT**
+        **Marker**->>**Marker**: **保持DSCP = BE(000000)**
+    end
+    
+    deactivate **Classifier**
+    
+    **Netfilter**->>**IP**: **NF_ACCEPT**
+    deactivate **Netfilter**
+    
+    **IP**->>**IP**: **ip_finish_output()**
+    **IP**->>**IP**: **基于priority选择发送队列**
+```
+
+#### **4. 队列纪律层调度算法时序对比**
+
+```mermaid
+sequenceDiagram
+    participant **Ingress** as **数据包入队**
+    participant **HTB** as **HTB调度器**
+    participant **FQ** as **FQ调度器**
+    participant **TBF** as **TBF调度器**
+    participant **SFQ** as **SFQ调度器**
+    participant **Egress** as **数据包出队**
+    
+    Note over **Ingress**,**Egress**: **不同调度算法并行处理时序对比**
+    
+    **Ingress**->>**HTB**: **enqueue(skb)**
+    **Ingress**->>**FQ**: **enqueue(skb)**  
+    **Ingress**->>**TBF**: **enqueue(skb)**
+    **Ingress**->>**SFQ**: **enqueue(skb)**
+    
+    activate **HTB**
+    activate **FQ**
+    activate **TBF**
+    activate **SFQ**
+    
+    par **HTB分层令牌桶**
+        **HTB**->>**HTB**: **htb_classify()分类**
+        **HTB**->>**HTB**: **检查类令牌桶**
+        **HTB**->>**HTB**: **更新借用关系**
+        **HTB**->>**HTB**: **htb_dequeue()出队**
+        **HTB**->>**Egress**: **高优先级数据包**
+    and **FQ公平队列** 
+        **FQ**->>**FQ**: **fq_classify()流哈希**
+        **FQ**->>**FQ**: **按流分类入队**
+        **FQ**->>**FQ**: **时间轮调度**
+        **FQ**->>**FQ**: **fq_dequeue()轮询出队**
+        **FQ**->>**Egress**: **公平调度数据包**
+    and **TBF令牌桶**
+        **TBF**->>**TBF**: **tbf_update_tokens()**
+        **TBF**->>**TBF**: **检查令牌数量**
+        **TBF**->>**TBF**: **计算发送延迟**
+        **TBF**->>**TBF**: **tbf_dequeue()限速出队**
+        **TBF**->>**Egress**: **限速数据包**
+    and **SFQ随机公平队列**
+        **SFQ**->>**SFQ**: **sfq_classify()哈希分类**
+        **SFQ**->>**SFQ**: **轮询队列选择**
+        **SFQ**->>**SFQ**: **扰动哈希防止冲突**
+        **SFQ**->>**SFQ**: **sfq_dequeue()公平出队**
+        **SFQ**->>**Egress**: **防碰撞数据包**
+    end
+    
+    deactivate **HTB**
+    deactivate **FQ**
+    deactivate **TBF**  
+    deactivate **SFQ**
+```
+
+#### **5. 网卡驱动和硬件队列调度时序**
+
+```mermaid
+sequenceDiagram
+    participant **Qdisc** as **队列纪律**
+    participant **NetDev** as **网络设备**
+    participant **Driver** as **网卡驱动**
+    participant **DMA** as **DMA引擎**
+    participant **HwQueue** as **硬件队列**
+    participant **PHY** as **物理接口**
+    
+    Note over **Qdisc**,**PHY**: **驱动层和硬件层调度时序**
+    
+    **Qdisc**->>**NetDev**: **dev_queue_xmit()**
+    **NetDev**->>**Driver**: **ndo_start_xmit()**
+    activate **Driver**
+    
+    **Driver**->>**Driver**: **选择硬件发送队列**
+    Note right of **Driver**: **基于skb_get_queue_mapping()<br/>CPU亲和性选择队列**
+    
+    **Driver**->>**DMA**: **分配DMA描述符**
+    **DMA**->>**DMA**: **设置数据包DMA映射**
+    **DMA**->>**HwQueue**: **提交到硬件队列**
+    activate **HwQueue**
+    
+    **HwQueue**->>**HwQueue**: **硬件QoS调度**
+    
+    alt **严格优先级(SP)调度**
+        **HwQueue**->>**HwQueue**: **检查高优先级队列**
+        **HwQueue**->>**PHY**: **优先发送高优先级包**
+    else **加权轮询(WRR)调度**
+        **HwQueue**->>**HwQueue**: **按权重比例调度**
+        **HwQueue**->>**PHY**: **轮询发送各队列数据包**
+    else **缺陷轮询(DRR)调度**
+        **HwQueue**->>**HwQueue**: **维护各队列配额**
+        **HwQueue**->>**PHY**: **按配额公平发送**
+    end
+    
+    **PHY**->>**PHY**: **物理层信号发送**
+    **PHY**->>**HwQueue**: **发送完成中断**
+    
+    **HwQueue**->>**Driver**: **TX中断处理**
+    deactivate **HwQueue**
+    
+    **Driver**->>**DMA**: **释放DMA描述符**
+    **Driver**->>**NetDev**: **发送完成通知**
+    deactivate **Driver**
+    
+    **NetDev**->>**Qdisc**: **更新统计信息**
 ```
 
 ## 优点与局限性

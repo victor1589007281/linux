@@ -995,6 +995,592 @@ graph TB
     end
 ```
 
+## **NUMA内存分配均衡分析**
+
+### **NUMA用途和解决的核心问题**
+
+NUMA设计主要用来解决多核系统中的内存访问瓶颈和可扩展性问题：
+
+```c
+// NUMA内存分配均衡的核心作用 - mm/mempolicy.c
+
+/*
+ * NUMA内存分配的主要用途：
+ * 1. 优化内存访问延迟：将内存分配在最近的节点上
+ * 2. 提高内存带宽：分散内存访问到多个内存控制器
+ * 3. 减少总线竞争：避免所有CPU竞争单一内存总线
+ * 4. 提升系统可扩展性：支持更多CPU和更大内存容量
+ * 5. 改善应用性能：通过数据局部性减少访问延迟
+ */
+
+// NUMA均衡内存分配策略
+enum numa_balancing_reason {
+    NUMA_MIGRATE_CPUPID,           // 基于CPU PID的迁移
+    NUMA_MIGRATE_MEMORY_POLICY,    // 基于内存策略的迁移
+    NUMA_MIGRATE_TASK_PREFERRED,   // 任务首选节点迁移
+    NUMA_MIGRATE_GROUP_PREFERRED,  // 组首选节点迁移
+    NUMA_MIGRATE_RATE_LIMITED,     // 速率限制迁移
+    NUMA_MIGRATE_MEMORY_HOTPLUG,   // 内存热插拔迁移
+    NUMA_NR_MIGRATE_REASONS
+};
+
+// 解决的关键问题分析
+struct numa_problem_solution {
+    // 1. 内存访问延迟问题
+    struct memory_access_problem {
+        u64 local_access_latency;      // 本地访问延迟：~100-200ns
+        u64 remote_access_latency;     // 远程访问延迟：~300-500ns
+        float performance_penalty;     // 性能损失：150%-250%
+        
+        // 解决方案：本地化内存分配
+        struct local_allocation {
+            int preferred_node;         // 首选节点
+            struct zonelist *node_zonelists; // 节点分配列表
+            int fallback_distance;     // 回退距离阈值
+        };
+    } access_latency;
+    
+    // 2. 内存带宽瓶颈问题
+    struct memory_bandwidth_problem {
+        u64 single_node_bandwidth;     // 单节点带宽限制
+        u64 aggregate_bandwidth;       // 聚合带宽
+        float bandwidth_utilization;   // 带宽利用率
+        
+        // 解决方案：分布式内存分配
+        struct distributed_allocation {
+            int interleave_policy;      // 交错分配策略
+            struct nodemask_t allowed_nodes; // 允许的节点掩码
+            int spread_factor;          // 分散因子
+        };
+    } bandwidth_bottleneck;
+    
+    // 3. 可扩展性问题
+    struct scalability_problem {
+        int max_cpus_single_node;      // 单节点最大CPU数
+        u64 max_memory_single_node;    // 单节点最大内存
+        int interconnect_latency;      // 互联延迟
+        
+        // 解决方案：NUMA感知调度
+        struct numa_aware_scheduling {
+            bool enable_numa_balancing; // 启用NUMA平衡
+            int migration_cost_threshold; // 迁移成本阈值
+            int numa_group_weight;      // NUMA组权重
+        };
+    } scalability_limits;
+};
+
+// NUMA内存分配的具体优化措施
+static int numa_optimize_memory_allocation(struct mm_struct *mm,
+                                         unsigned long addr,
+                                         int len, int prot)
+{
+    struct mempolicy *pol;
+    struct page *page;
+    int target_node, current_node;
+    
+    // 1. 确定最优分配节点
+    target_node = numa_find_best_node(current);
+    if (target_node < 0) {
+        target_node = numa_node_id(); // 使用当前节点
+    }
+    
+    // 2. 检查内存策略
+    pol = get_task_policy(current);
+    switch (pol->mode) {
+    case MPOL_BIND:
+        // 绑定到特定节点
+        target_node = first_node(pol->nodes);
+        break;
+        
+    case MPOL_INTERLEAVE:
+        // 交错分配
+        target_node = interleave_nid(pol, addr, PAGE_SHIFT);
+        break;
+        
+    case MPOL_PREFERRED:
+        // 首选节点分配
+        if (pol->nodes.bits[0] != 0) {
+            target_node = first_node(pol->nodes);
+        }
+        break;
+        
+    case MPOL_LOCAL:
+        // 本地节点分配
+        target_node = numa_node_id();
+        break;
+    }
+    
+    // 3. 执行内存分配
+    page = alloc_pages_node(target_node, GFP_KERNEL, get_order(len));
+    if (!page) {
+        // 分配失败，尝试回退节点
+        target_node = numa_get_fallback_node(target_node);
+        page = alloc_pages_node(target_node, GFP_KERNEL, get_order(len));
+    }
+    
+    return page ? 0 : -ENOMEM;
+}
+```
+
+### **NUMA引入的新问题和解决方案**
+
+虽然NUMA解决了内存访问的问题，但也引入了一些新的挑战：
+
+```c
+// NUMA引入的问题及其解决方案
+
+// 1. 内存访问不一致性问题
+struct numa_access_inconsistency {
+    // 问题：不同节点访问同一数据的延迟不同
+    struct access_pattern {
+        u64 local_latency;              // 本地访问延迟
+        u64 remote_latency;             // 远程访问延迟
+        float variance_factor;          // 方差因子
+    };
+    
+    // 解决方案：NUMA感知的数据放置
+    struct numa_aware_placement {
+        bool enable_auto_migration;     // 自动页面迁移
+        int migration_threshold;        // 迁移阈值
+        int scan_period_ms;             // 扫描周期
+        
+        // 页面迁移策略
+        struct page_migration_policy {
+            int min_fault_ratio;        // 最小故障比率
+            int max_migrate_pages;      // 最大迁移页数
+            bool migrate_on_demand;     // 按需迁移
+        };
+    };
+};
+
+// 2. 负载不平衡问题  
+struct numa_load_imbalance {
+    // 问题：任务和内存分布不均
+    struct imbalance_metrics {
+        float cpu_utilization[MAX_NUMNODES];    // 各节点CPU利用率
+        u64 memory_pressure[MAX_NUMNODES];      // 各节点内存压力
+        int task_distribution[MAX_NUMNODES];    // 任务分布
+    };
+    
+    // 解决方案：负载平衡策略
+    struct numa_load_balancing {
+        bool enable_numa_balancing;     // 启用NUMA负载平衡
+        int rebalance_interval;         // 重平衡间隔
+        float imbalance_threshold;      // 不平衡阈值
+        
+        // 任务迁移策略
+        struct task_migration_strategy {
+            int migration_cost_factor;  // 迁移成本因子
+            bool prefer_local_memory;   // 优先本地内存
+            int numa_group_id;          // NUMA组标识
+        };
+    };
+};
+
+// 3. 缓存一致性复杂化
+struct numa_cache_coherency {
+    // 问题：跨节点缓存同步开销增加
+    struct coherency_overhead {
+        u64 cache_miss_penalty;         // 缓存未命中惩罚
+        int coherency_protocol_cost;    // 一致性协议成本
+        float false_sharing_impact;     // 虚假共享影响
+    };
+    
+    // 解决方案：NUMA感知的缓存优化
+    struct numa_cache_optimization {
+        bool enable_numa_hint_faults;   // 启用NUMA提示错误
+        int cache_hot_threshold;        // 缓存热阈值
+        bool avoid_cross_node_sharing;  // 避免跨节点共享
+        
+        // 缓存友好的内存布局
+        struct cache_friendly_layout {
+            int cache_line_alignment;   // 缓存行对齐
+            bool numa_aware_slab;       // NUMA感知slab分配
+            int node_local_ratio;       // 节点本地化比率
+        };
+    };
+};
+
+// NUMA问题的综合解决框架
+static int numa_problem_mitigation_framework(void)
+{
+    struct numa_mitigation_config config = {
+        // 自适应迁移策略
+        .adaptive_migration = {
+            .enable = true,
+            .cost_threshold = NUMA_MIGRATE_COST_THRESHOLD,
+            .scan_delay_ms = 1000,
+            .max_scan_window = 256 * 1024 * 1024, // 256MB
+        },
+        
+        // 智能放置策略
+        .intelligent_placement = {
+            .enable_first_touch = true,
+            .enable_next_touch_migrate = true,
+            .locality_factor = 85, // 85%本地化目标
+        },
+        
+        // 性能监控和调优
+        .performance_monitoring = {
+            .enable_perf_events = true,
+            .memory_access_sampling = true,
+            .cross_node_traffic_monitoring = true,
+        }
+    };
+    
+    return numa_apply_mitigation_config(&config);
+}
+
+// NUMA优化效果评估
+struct numa_optimization_metrics {
+    // 性能改进指标
+    struct performance_improvement {
+        float memory_latency_reduction;  // 内存延迟减少百分比
+        float bandwidth_utilization_increase; // 带宽利用率提升
+        float overall_performance_gain;  // 总体性能提升
+    };
+    
+    // 系统资源利用率
+    struct resource_utilization {
+        float average_numa_hit_ratio;    // 平均NUMA命中率
+        float cross_node_migration_rate; // 跨节点迁移率
+        float load_balance_efficiency;   // 负载平衡效率
+    };
+    
+    // 应用程序影响
+    struct application_impact {
+        float cpu_bound_app_speedup;     // CPU密集型应用加速
+        float memory_bound_app_speedup;  // 内存密集型应用加速
+        float mixed_workload_improvement; // 混合工作负载改进
+    };
+};
+```
+
+### **NUMA拓扑发现机制详解**
+
+Linux内核在启动时通过多种途径发现系统的NUMA拓扑：
+
+```c
+// NUMA拓扑发现的完整流程 - arch/x86/mm/numa.c
+
+// 1. 硬件拓扑检测入口
+static int __init numa_init(void)
+{
+    int ret = -ENODEV;
+    
+    // 清理之前的设置
+    numa_reset_distance();
+    
+    // 按优先级顺序尝试不同的发现方法
+    
+    // 方法1: ACPI SRAT表发现
+    if (acpi_disabled)
+        goto skip_acpi;
+        
+    ret = acpi_numa_init();
+    if (!ret)
+        goto discovery_complete;
+        
+skip_acpi:
+    // 方法2: AMD专用NUMA发现
+    ret = amd_numa_init();
+    if (!ret)
+        goto discovery_complete;
+        
+    // 方法3: 虚假NUMA用于测试
+    if (numa_fake_node)
+        ret = fake_numa_init();
+        
+discovery_complete:
+    if (ret) {
+        // 发现失败，创建虚拟NUMA节点
+        printk(KERN_INFO "No NUMA configuration found, creating fake node\n");
+        ret = dummy_numa_init();
+    }
+    
+    // 初始化NUMA距离
+    numa_init_distance();
+    
+    // 设置CPU到节点的映射
+    numa_init_cpu_to_node();
+    
+    // 初始化内存zones
+    numa_init_memory_zones();
+    
+    return ret;
+}
+
+// 2. ACPI SRAT表解析
+static int __init acpi_numa_init(void)
+{
+    struct acpi_table_srat *srat;
+    struct acpi_srat_mem_affinity *ma;
+    struct acpi_srat_cpu_affinity *ca;
+    int ret;
+    
+    // 查找SRAT表
+    ret = acpi_get_table(ACPI_SIG_SRAT, 0, (struct acpi_table_header **)&srat);
+    if (ACPI_FAILURE(ret))
+        return -ENODEV;
+        
+    // 解析SRAT表条目
+    ret = acpi_table_parse_entries(ACPI_SIG_SRAT,
+                                  sizeof(struct acpi_table_srat),
+                                  ACPI_SRAT_TYPE_CPU_AFFINITY,
+                                  srat_parse_cpu_affinity, 0);
+    if (ret < 0)
+        goto out_err;
+        
+    ret = acpi_table_parse_entries(ACPI_SIG_SRAT,
+                                  sizeof(struct acpi_table_srat),
+                                  ACPI_SRAT_TYPE_MEMORY_AFFINITY,
+                                  srat_parse_memory_affinity, 0);
+    if (ret < 0)
+        goto out_err;
+        
+    // 解析SLIT表（节点间距离）
+    ret = acpi_parse_slit();
+    if (ret < 0)
+        printk(KERN_WARNING "SLIT table not found, using default distances\n");
+        
+out_err:
+    acpi_put_table((struct acpi_table_header *)srat);
+    return ret;
+}
+
+// 3. CPU亲和性解析
+static int __init srat_parse_cpu_affinity(struct acpi_subtable_header *header,
+                                         const unsigned long end)
+{
+    struct acpi_srat_cpu_affinity *cpu_affinity = 
+        (struct acpi_srat_cpu_affinity *)header;
+    int node_id, cpu_id;
+    
+    // 检查条目有效性
+    if (!(cpu_affinity->flags & ACPI_SRAT_CPU_ENABLED))
+        return 0;
+        
+    node_id = cpu_affinity->proximity_domain_lo |
+              (cpu_affinity->proximity_domain_hi[0] << 8) |
+              (cpu_affinity->proximity_domain_hi[1] << 16) |
+              (cpu_affinity->proximity_domain_hi[2] << 24);
+              
+    cpu_id = cpu_affinity->apic_id;
+    
+    // 设置CPU到节点的映射
+    if (cpu_id >= NR_CPUS) {
+        printk(KERN_WARNING "SRAT: CPU ID %d exceeds maximum\n", cpu_id);
+        return -EINVAL;
+    }
+    
+    set_cpu_numa_node(cpu_id, node_id);
+    node_set(node_id, numa_nodes_parsed);
+    
+    printk(KERN_DEBUG "SRAT: CPU %d -> Node %d\n", cpu_id, node_id);
+    
+    return 0;
+}
+
+// 4. 内存亲和性解析
+static int __init srat_parse_memory_affinity(struct acpi_subtable_header *header,
+                                            const unsigned long end)
+{
+    struct acpi_srat_mem_affinity *mem_affinity = 
+        (struct acpi_srat_mem_affinity *)header;
+    int node_id;
+    u64 start, length;
+    
+    // 检查条目有效性
+    if (!(mem_affinity->flags & ACPI_SRAT_MEM_ENABLED))
+        return 0;
+        
+    node_id = mem_affinity->proximity_domain;
+    start = mem_affinity->base_address;
+    length = mem_affinity->length;
+    
+    // 注册内存范围到指定节点
+    if (numa_add_memblk(node_id, start, start + length) < 0) {
+        printk(KERN_WARNING "SRAT: Failed to add memory block [%llx-%llx] to node %d\n",
+               start, start + length - 1, node_id);
+        return -EINVAL;
+    }
+    
+    printk(KERN_DEBUG "SRAT: Memory [%llx-%llx] -> Node %d\n", 
+           start, start + length - 1, node_id);
+    
+    return 0;
+}
+
+// 5. 节点间距离初始化
+static void __init numa_init_distance(void)
+{
+    int i, j;
+    
+    // 分配距离表
+    numa_distance = memblock_alloc(nr_node_ids * nr_node_ids, PAGE_SIZE);
+    if (!numa_distance) {
+        printk(KERN_WARNING "Failed to allocate NUMA distance table\n");
+        return;
+    }
+    
+    numa_distance_cnt = nr_node_ids;
+    
+    // 初始化默认距离
+    for (i = 0; i < nr_node_ids; i++) {
+        for (j = 0; j < nr_node_ids; j++) {
+            numa_distance[i * nr_node_ids + j] = 
+                (i == j) ? LOCAL_DISTANCE : REMOTE_DISTANCE;
+        }
+    }
+    
+    // 应用SLIT表中的距离信息
+    if (slit_distance_table) {
+        for (i = 0; i < nr_node_ids; i++) {
+            for (j = 0; j < nr_node_ids; j++) {
+                numa_distance[i * nr_node_ids + j] = 
+                    slit_distance_table[i * nr_node_ids + j];
+            }
+        }
+    }
+}
+
+// 6. CPU到节点映射初始化
+static void __init numa_init_cpu_to_node(void)
+{
+    int cpu, node;
+    
+    // 为未映射的CPU分配节点
+    for_each_possible_cpu(cpu) {
+        node = early_cpu_to_node(cpu);
+        if (node == NUMA_NO_NODE) {
+            // 使用第一个有效节点作为默认值
+            node = first_node(numa_nodes_parsed);
+            set_cpu_numa_node(cpu, node);
+        }
+    }
+    
+    // 验证映射的正确性
+    for_each_possible_cpu(cpu) {
+        node = early_cpu_to_node(cpu);
+        if (!node_isset(node, numa_nodes_parsed)) {
+            printk(KERN_WARNING "CPU %d mapped to invalid node %d\n", 
+                   cpu, node);
+        }
+    }
+}
+```
+
+### **NUMA工作时序图**
+
+```mermaid
+sequenceDiagram
+    participant **BIOS** as **BIOS/UEFI**
+    participant **Kernel** as **Linux内核**
+    participant **ACPI** as **ACPI子系统**
+    participant **MM** as **内存管理**
+    participant **Sched** as **进程调度器**
+    participant **App** as **用户应用**
+    
+    Note over **BIOS**,**App**: **NUMA系统完整工作时序流程**
+    
+    **BIOS**->>**BIOS**: **硬件拓扑检测**
+    **BIOS**->>**BIOS**: **生成SRAT/SLIT表**
+    **BIOS**->>**Kernel**: **系统启动，传递ACPI表**
+    
+    activate **Kernel**
+    **Kernel**->>**ACPI**: **numa_init()调用**
+    activate **ACPI**
+    
+    **ACPI**->>**ACPI**: **acpi_numa_init()**
+    **ACPI**->>**ACPI**: **解析SRAT表**
+    Note right of **ACPI**: **CPU亲和性：CPU->节点映射<br/>内存亲和性：内存范围->节点映射**
+    
+    **ACPI**->>**ACPI**: **解析SLIT表** 
+    Note right of **ACPI**: **节点间距离矩阵<br/>本地距离=10，远程距离=20+**
+    
+    **ACPI**->>**Kernel**: **返回NUMA拓扑信息**
+    deactivate **ACPI**
+    
+    **Kernel**->>**MM**: **numa_init_distance()**
+    activate **MM**
+    **MM**->>**MM**: **初始化距离表**
+    **MM**->>**MM**: **设置zonelist回退顺序**
+    **MM**->>**Kernel**: **内存管理器就绪**
+    deactivate **MM**
+    
+    **Kernel**->>**Sched**: **numa_init_cpu_to_node()**
+    activate **Sched**
+    **Sched**->>**Sched**: **建立CPU-节点映射**
+    **Sched**->>**Sched**: **初始化NUMA调度域**
+    **Sched**->>**Kernel**: **调度器NUMA感知就绪**
+    deactivate **Sched**
+    
+    **Kernel**->>**Kernel**: **启动per-node kswapd**
+    **Kernel**->>**App**: **系统启动完成**
+    deactivate **Kernel**
+    
+    Note over **App**: **运行时NUMA操作**
+    
+    **App**->>**MM**: **malloc(size)**
+    activate **MM**
+    
+    **MM**->>**MM**: **确定分配策略**
+    alt **首次分配(First-touch)**
+        **MM**->>**MM**: **分配到当前CPU节点**
+        **MM**->>**App**: **返回本地内存地址**
+    else **NUMA策略分配**
+        **MM**->>**MM**: **检查mempolicy**
+        
+        alt **MPOL_BIND策略**
+            **MM**->>**MM**: **强制指定节点分配**
+        else **MPOL_INTERLEAVE策略**
+            **MM**->>**MM**: **轮询各节点分配**
+        else **MPOL_PREFERRED策略**
+            **MM**->>**MM**: **首选节点分配，回退其他节点**
+        end
+        
+        **MM**->>**App**: **返回内存地址**
+    end
+    
+    deactivate **MM**
+    
+    **App**->>**MM**: **访问内存页面**
+    activate **MM**
+    
+    alt **本地节点访问**
+        **MM**->>**App**: **快速访问（~100-200ns）**
+    else **远程节点访问**
+        **MM**->>**MM**: **NUMA fault检测**
+        **MM**->>**Sched**: **触发NUMA balancing**
+        
+        activate **Sched**
+        **Sched**->>**Sched**: **评估迁移收益**
+        Note right of **Sched**: **考虑因子：<br/>1. 访问频率<br/>2. 迁移成本<br/>3. 节点负载<br/>4. 任务亲和性**
+        
+        alt **迁移收益高**
+            **Sched**->>**MM**: **migrate_misplaced_page()**
+            **MM**->>**MM**: **页面迁移到本地节点**
+            **MM**->>**Sched**: **更新任务NUMA统计**
+            **Sched**->>**Sched**: **调整任务首选节点**
+        else **保持现状**
+            **Sched**->>**MM**: **不进行迁移**
+        end
+        
+        deactivate **Sched**
+        **MM**->>**App**: **访问完成（可能已迁移）**
+    end
+    
+    deactivate **MM**
+    
+    **App**->>**Sched**: **fork()创建子进程**
+    activate **Sched**
+    **Sched**->>**Sched**: **继承父进程NUMA属性**
+    **Sched**->>**Sched**: **选择执行节点**
+    Note right of **Sched**: **考虑因子：<br/>1. 父进程节点<br/>2. 内存位置<br/>3. 节点负载**
+    **Sched**->>**App**: **子进程在最优节点启动**
+    deactivate **Sched**
+```
+
 ## 总结
 
 Linux NUMA架构通过以下核心机制实现高效的非均匀内存访问管理：
