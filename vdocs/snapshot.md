@@ -750,7 +750,7 @@ sequenceDiagram
         Trans->>Trans: list_add(pending_snapshot)
         Note right of Trans: **添加到待处理快照列表**
         
-        Trans-->>-Btrfs: 返回事务句柄
+        Trans-->>Btrfs: 返回事务句柄
         Note right of Trans: **事务准备完成**
     end
     
@@ -829,14 +829,14 @@ sequenceDiagram
         Trans->>Trans: 写入事务标记
         Note right of Trans: **标记事务完成**
         
-        Trans-->>-Btrfs: 事务提交成功
+        Trans-->>Btrfs: 事务提交成功
         Note right of Trans: **快照创建事务完成**
     end
     
     rect rgb(240, 255, 240)
         Note over Btrfs,User: **快照完成阶段**
         
-        Btrfs->>Btrfs: 注册新子卷
+        Btrfs->>-Btrfs: 注册新子卷
         Note right of Btrfs: **在子卷列表中注册快照**
         
         Btrfs->>VFS: 创建目录项和inode
@@ -1149,7 +1149,7 @@ sequenceDiagram
         Refcount->>Refcount: 确定共享范围
         Note right of Refcount: **标识可共享的extent**
         
-        Refcount-->>-XFS: 返回共享extent列表
+        Refcount->>-XFS: 返回共享extent列表
         Note right of Refcount: **返回extent共享信息**
     end
     
@@ -6268,6 +6268,780 @@ out:
     return ret;
 }
 ```
+
+---
+
+## ROW与COW机制深度解析
+
+### ROW (Redirect-on-Write) 机制
+
+ROW机制是一种不同于COW的写操作处理策略，它在写入时不复制原数据，而是将新数据写到新位置，然后更新元数据指针。
+
+#### ROW工作机制时序图
+
+```mermaid
+sequenceDiagram
+    participant App as **应用程序**
+    participant VFS as **VFS层**
+    participant FS as **文件系统**
+    participant Meta as **元数据管理**
+    participant Alloc as **空间分配器**
+    participant Storage as **存储层**
+    
+    Note over App,Storage: **ROW写操作完整流程**
+    
+    rect rgb(240, 255, 240)
+        Note over App,VFS: **写请求阶段**
+        
+        App->>+VFS: write(fd, buf, size)
+        Note right of App: **应用发起写请求**
+        
+        VFS->>+FS: 文件系统write操作
+        Note right of VFS: **VFS转发写请求**
+        
+        FS->>FS: 检查文件状态和权限
+        Note right of FS: **验证写操作合法性**
+    end
+    
+    rect rgb(255, 240, 240)
+        Note over FS,Meta: **元数据查询阶段**
+        
+        FS->>+Meta: 查询当前数据块位置
+        Note right of FS: **获取要修改的块地址**
+        
+        Meta->>Meta: 读取inode元数据
+        Note right of Meta: **定位块映射表**
+        
+        Meta->>Meta: 检查块共享状态
+        Note right of Meta: **判断是否被快照引用**
+        
+        alt 块被共享
+            Meta->>Meta: 标记需要重定向
+            Note right of Meta: **触发ROW机制**
+        else 块未共享
+            Meta->>Meta: 可以原地写入
+            Note right of Meta: **直接更新**
+        end
+        
+        Meta->>-FS: 返回块状态信息
+        Note right of Meta: **返回是否需要ROW**
+    end
+    
+    rect rgb(240, 240, 255)
+        Note over FS,Alloc: **空间分配阶段**
+        
+        FS->>+Alloc: 请求分配新数据块
+        Note right of FS: **需要新的存储位置**
+        
+        Alloc->>Alloc: 搜索空闲块
+        Note right of Alloc: **查找可用空间**
+        
+        Alloc->>Alloc: 选择最优位置
+        Note right of Alloc: **考虑局部性原理**
+        
+        Alloc->>Alloc: 更新空闲空间位图
+        Note right of Alloc: **标记块为已使用**
+        
+        Alloc->>-FS: 返回新块地址
+        Note right of Alloc: **分配完成**
+    end
+    
+    rect rgb(255, 255, 240)
+        Note over FS,Storage: **数据写入阶段**
+        
+        FS->>+Storage: 将新数据写到新块
+        Note right of FS: **重定向写入**
+        
+        Note over Storage: **关键：不读取原数据**
+        Storage->>Storage: 直接写入新数据
+        Note right of Storage: **写到新分配的块**
+        
+        Storage->>Storage: 刷新缓存
+        Note right of Storage: **确保数据持久化**
+        
+        Storage->>-FS: 写入完成
+        Note right of Storage: **数据已安全存储**
+    end
+    
+    rect rgb(240, 255, 255)
+        Note over FS,Meta: **元数据更新阶段**
+        
+        FS->>+Meta: 更新块映射
+        Note right of FS: **修改inode指针**
+        
+        Meta->>Meta: 原子更新块地址
+        Note right of Meta: **从旧块指向新块**
+        
+        Meta->>Meta: 递减旧块引用计数
+        Note right of Meta: **更新引用计数**
+        
+        alt 引用计数降为0
+            Meta->>Alloc: 释放旧块
+            Note right of Meta: **回收空间**
+        else 引用计数>0
+            Meta->>Meta: 保留旧块
+            Note right of Meta: **快照仍在使用**
+        end
+        
+        Meta->>Meta: 持久化元数据
+        Note right of Meta: **写入journal/log**
+        
+        Meta->>-FS: 元数据更新完成
+        Note right of Meta: **映射已更新**
+    end
+    
+    rect rgb(255, 240, 255)
+        Note over FS,App: **完成阶段**
+        
+        FS->>-VFS: 返回写入字节数
+        Note right of FS: **操作成功**
+        
+        VFS->>-App: 返回成功
+        Note right of VFS: **写操作完成**
+        
+        Note over App,Storage: **旧数据保留在原位置，被快照引用；新数据在新位置**
+    end
+```
+
+#### ROW机制代码示例
+
+```c
+// ROW机制实现示例
+struct row_write_context {
+    struct inode *inode;
+    loff_t offset;
+    size_t len;
+    sector_t old_block;
+    sector_t new_block;
+    u32 ref_count;
+};
+
+// ROW写操作主流程
+static ssize_t row_write(struct file *file, const char __user *buf,
+                        size_t count, loff_t *ppos)
+{
+    struct inode *inode = file->f_inode;
+    struct row_write_context ctx = {0};
+    ssize_t ret;
+    
+    ctx.inode = inode;
+    ctx.offset = *ppos;
+    ctx.len = count;
+    
+    /* 1. 查询当前数据块 */
+    ctx.old_block = get_data_block(inode, *ppos);
+    if (!ctx.old_block) {
+        /* 新写入，不需要ROW */
+        return standard_write(file, buf, count, ppos);
+    }
+    
+    /* 2. 检查块是否被共享 */
+    ctx.ref_count = get_block_refcount(ctx.old_block);
+    if (ctx.ref_count <= 1) {
+        /* 未被共享，可以原地写入 */
+        return inplace_write(file, buf, count, ppos);
+    }
+    
+    /* 3. 分配新块（ROW核心） */
+    ctx.new_block = allocate_new_block(inode->i_sb);
+    if (!ctx.new_block) {
+        return -ENOSPC;
+    }
+    
+    /* 4. 将新数据直接写到新块（不读取原数据） */
+    ret = write_to_block(ctx.new_block, buf, count);
+    if (ret < 0) {
+        free_block(ctx.new_block);
+        return ret;
+    }
+    
+    /* 5. 更新inode映射 */
+    ret = update_block_mapping(inode, *ppos, ctx.new_block);
+    if (ret < 0) {
+        free_block(ctx.new_block);
+        return ret;
+    }
+    
+    /* 6. 递减旧块引用计数 */
+    if (dec_block_refcount(ctx.old_block) == 0) {
+        /* 没有快照引用了，可以释放 */
+        free_block(ctx.old_block);
+    }
+    
+    *ppos += ret;
+    return ret;
+}
+
+// ROW块映射更新
+static int update_block_mapping(struct inode *inode, loff_t offset,
+                               sector_t new_block)
+{
+    struct block_mapping *mapping = inode->i_mapping_tree;
+    unsigned long block_index = offset >> inode->i_blkbits;
+    struct transaction *trans;
+    int ret;
+    
+    /* 开始事务 */
+    trans = begin_transaction(inode->i_sb);
+    if (!trans)
+        return -ENOMEM;
+    
+    /* 原子更新块映射 */
+    ret = mapping_replace_block(mapping, block_index, new_block);
+    if (ret < 0) {
+        abort_transaction(trans);
+        return ret;
+    }
+    
+    /* 标记inode为脏 */
+    mark_inode_dirty(inode);
+    
+    /* 提交事务 */
+    ret = commit_transaction(trans);
+    return ret;
+}
+```
+
+### COW (Copy-on-Write) 机制
+
+COW机制在写入时先复制原数据到新位置，然后修改副本。这是快照技术最常用的机制。
+
+#### COW工作机制时序图
+
+```mermaid
+sequenceDiagram
+    participant App as **应用程序**
+    participant VFS as **VFS层**
+    participant FS as **文件系统**
+    participant Meta as **元数据管理**
+    participant Cache as **Page Cache**
+    participant Storage as **存储层**
+    
+    Note over App,Storage: **COW写操作完整流程**
+    
+    rect rgb(240, 255, 240)
+        Note over App,VFS: **写请求阶段**
+        
+        App->>+VFS: write(fd, buf, size)
+        Note right of App: **应用发起写请求**
+        
+        VFS->>+FS: 文件系统write操作
+        Note right of VFS: **VFS转发**
+        
+        FS->>FS: 锁定inode
+        Note right of FS: **保护并发写入**
+    end
+    
+    rect rgb(255, 240, 240)
+        Note over FS,Meta: **共享检测阶段**
+        
+        FS->>+Meta: 查询数据块状态
+        Note right of FS: **检查要修改的块**
+        
+        Meta->>Meta: 读取块引用计数
+        Note right of Meta: **获取共享信息**
+        
+        alt 引用计数>1 (被共享)
+            Meta->>Meta: 触发COW流程
+            Note right of Meta: **需要复制**
+        else 引用计数=1 (未共享)
+            Meta->>Meta: 可以原地修改
+            Note right of Meta: **直接写入**
+        end
+        
+        Meta->>-FS: 返回操作类型
+        Note right of Meta: **COW或原地写**
+    end
+    
+    rect rgb(240, 240, 255)
+        Note over FS,Storage: **数据读取阶段（COW特有）**
+        
+        FS->>+Cache: 检查Page Cache
+        Note right of FS: **先查缓存**
+        
+        alt 数据在缓存中
+            Cache->>-FS: 返回缓存页
+            Note right of Cache: **命中**
+        else 数据不在缓存中
+            Cache->>+Storage: 读取原数据块
+            Note right of Cache: **缓存未命中**
+            
+            Note over Storage: **关键：必须读取原数据**
+            Storage->>Storage: 从磁盘读取
+            Note right of Storage: **加载完整块**
+            
+            Storage->>-Cache: 返回数据
+            Note right of Storage: **读取完成**
+            
+            Cache->>FS: 返回缓存页
+            Note right of Cache: **缓存已加载**
+        end
+    end
+    
+    rect rgb(255, 255, 240)
+        Note over FS,Storage: **数据复制阶段**
+        
+        FS->>FS: 分配新数据块
+        Note right of FS: **准备新位置**
+        
+        FS->>+Storage: 复制原数据到新块
+        Note right of FS: **完整复制**
+        
+        Storage->>Storage: 写入原数据副本
+        Note right of Storage: **先复制后修改**
+        
+        Storage->>-FS: 复制完成
+        Note right of Storage: **副本已创建**
+    end
+    
+    rect rgb(240, 255, 255)
+        Note over FS,Storage: **数据修改阶段**
+        
+        FS->>+Storage: 在新块上应用修改
+        Note right of FS: **修改副本数据**
+        
+        Storage->>Storage: 更新指定区域
+        Note right of Storage: **部分修改**
+        
+        Storage->>Storage: 刷新到磁盘
+        Note right of Storage: **持久化新数据**
+        
+        Storage->>-FS: 写入完成
+        Note right of Storage: **新数据已保存**
+    end
+    
+    rect rgb(255, 240, 255)
+        Note over FS,Meta: **元数据更新阶段**
+        
+        FS->>+Meta: 更新块映射
+        Note right of FS: **切换到新块**
+        
+        Meta->>Meta: 修改inode指针
+        Note right of Meta: **指向新位置**
+        
+        Meta->>Meta: 递增新块引用计数
+        Note right of Meta: **新块ref=1**
+        
+        Meta->>Meta: 递减旧块引用计数
+        Note right of Meta: **更新旧块引用**
+        
+        alt 旧块引用计数>0
+            Meta->>Meta: 保留旧块
+            Note right of Meta: **快照还在用**
+        else 旧块引用计数=0
+            Meta->>Meta: 释放旧块
+            Note right of Meta: **回收空间**
+        end
+        
+        Meta->>Meta: 持久化元数据
+        Note right of Meta: **记录journal**
+        
+        Meta->>-FS: 更新完成
+        Note right of Meta: **元数据已同步**
+    end
+    
+    rect rgb(240, 255, 240)
+        Note over FS,App: **完成阶段**
+        
+        FS->>FS: 解锁inode
+        Note right of FS: **释放锁**
+        
+        FS->>-VFS: 返回写入字节数
+        Note right of FS: **成功**
+        
+        VFS->>-App: 返回结果
+        Note right of VFS: **写操作完成**
+        
+        Note over App,Storage: **原数据保留，新数据在新位置，快照看到旧数据**
+    end
+```
+
+#### COW机制代码示例
+
+```c
+// COW机制实现示例
+struct cow_write_context {
+    struct inode *inode;
+    struct page *page;
+    loff_t offset;
+    size_t len;
+    sector_t old_block;
+    sector_t new_block;
+    void *old_data;
+};
+
+// COW写操作主流程
+static ssize_t cow_write(struct file *file, const char __user *buf,
+                        size_t count, loff_t *ppos)
+{
+    struct inode *inode = file->f_inode;
+    struct cow_write_context ctx = {0};
+    ssize_t ret;
+    u32 ref_count;
+    
+    ctx.inode = inode;
+    ctx.offset = *ppos;
+    ctx.len = count;
+    
+    /* 1. 获取当前数据块 */
+    ctx.old_block = get_data_block(inode, *ppos);
+    if (!ctx.old_block) {
+        /* 新写入，分配新块 */
+        return allocate_and_write(file, buf, count, ppos);
+    }
+    
+    /* 2. 检查块引用计数 */
+    ref_count = get_block_refcount(ctx.old_block);
+    if (ref_count <= 1) {
+        /* 未被共享，可以原地写入 */
+        return inplace_write(file, buf, count, ppos);
+    }
+    
+    /* 3. 读取原数据（COW核心步骤1：Copy） */
+    ctx.old_data = read_block_data(ctx.old_block);
+    if (!ctx.old_data) {
+        return -EIO;
+    }
+    
+    /* 4. 分配新块 */
+    ctx.new_block = allocate_new_block(inode->i_sb);
+    if (!ctx.new_block) {
+        kfree(ctx.old_data);
+        return -ENOSPC;
+    }
+    
+    /* 5. 复制原数据到新块（COW核心步骤2：Copy） */
+    ret = copy_block_data(ctx.old_block, ctx.new_block);
+    if (ret < 0) {
+        free_block(ctx.new_block);
+        kfree(ctx.old_data);
+        return ret;
+    }
+    
+    /* 6. 在新块上修改数据（COW核心步骤3：Write） */
+    ret = modify_block_data(ctx.new_block, *ppos, buf, count);
+    if (ret < 0) {
+        free_block(ctx.new_block);
+        kfree(ctx.old_data);
+        return ret;
+    }
+    
+    /* 7. 更新元数据映射 */
+    ret = cow_update_mapping(inode, *ppos, ctx.new_block, ctx.old_block);
+    if (ret < 0) {
+        free_block(ctx.new_block);
+        kfree(ctx.old_data);
+        return ret;
+    }
+    
+    kfree(ctx.old_data);
+    *ppos += count;
+    return count;
+}
+
+// COW块复制函数
+static int copy_block_data(sector_t src_block, sector_t dst_block)
+{
+    struct buffer_head *src_bh, *dst_bh;
+    int ret = 0;
+    
+    /* 读取源块 */
+    src_bh = sb_bread(current->fs->root->d_sb, src_block);
+    if (!src_bh)
+        return -EIO;
+    
+    /* 分配目标块缓冲区 */
+    dst_bh = sb_getblk(current->fs->root->d_sb, dst_block);
+    if (!dst_bh) {
+        brelse(src_bh);
+        return -ENOMEM;
+    }
+    
+    /* 复制数据 */
+    memcpy(dst_bh->b_data, src_bh->b_data, dst_bh->b_size);
+    
+    /* 标记目标块为脏并写入 */
+    mark_buffer_dirty(dst_bh);
+    ret = sync_dirty_buffer(dst_bh);
+    
+    brelse(src_bh);
+    brelse(dst_bh);
+    
+    return ret;
+}
+
+// COW元数据更新
+static int cow_update_mapping(struct inode *inode, loff_t offset,
+                             sector_t new_block, sector_t old_block)
+{
+    struct transaction *trans;
+    unsigned long block_index = offset >> inode->i_blkbits;
+    int ret;
+    
+    /* 开始事务 */
+    trans = begin_transaction(inode->i_sb);
+    if (!trans)
+        return -ENOMEM;
+    
+    /* 更新inode块映射 */
+    ret = replace_block_mapping(inode, block_index, new_block);
+    if (ret < 0) {
+        abort_transaction(trans);
+        return ret;
+    }
+    
+    /* 递增新块引用计数 */
+    inc_block_refcount(new_block);
+    
+    /* 递减旧块引用计数 */
+    if (dec_block_refcount(old_block) == 0) {
+        /* 旧块无引用，释放 */
+        free_block_in_transaction(trans, old_block);
+    }
+    
+    /* 标记inode为脏 */
+    mark_inode_dirty_in_transaction(trans, inode);
+    
+    /* 提交事务 */
+    ret = commit_transaction(trans);
+    return ret;
+}
+```
+
+### ROW vs COW 机制对比
+
+#### 性能对比表
+
+| **对比维度** | **ROW (Redirect-on-Write)** | **COW (Copy-on-Write)** |
+|------------|----------------------------|-------------------------|
+| **写延迟** | 低（无需读取原数据） | 高（需要读取+复制原数据） |
+| **读延迟** | 低（数据位置分散，可能影响顺序读） | 低（数据保持原位置） |
+| **空间效率** | 高（立即释放未引用块） | 中（需等待GC） |
+| **I/O操作** | 1次写入 + 元数据更新 | 1次读取 + 1次写入 + 元数据更新 |
+| **并发性能** | 优秀（无读写竞争） | 一般（读写需同步） |
+| **碎片化** | 较高（数据分散） | 较低（保持局部性） |
+| **快照性能** | 快照性能不受影响 | 快照越多性能越差 |
+| **元数据开销** | 中等 | 中等 |
+| **实现复杂度** | 简单 | 中等 |
+| **典型应用** | Btrfs, WAFL | dm-snapshot, LVM, ZFS |
+
+#### 使用场景分析
+
+```text
+**ROW vs COW使用场景决策树**
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           **场景分析**                                        │
+│                                                                             │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │ **ROW最适合的场景**                                                   │   │
+│  │  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐         │   │
+│  │  │ **高性能数据库**│  │ **日志系统**   │  │ **流媒体写入** │         │   │
+│  │  │ ──────────────  │  │ ──────────────  │  │ ──────────────  │         │   │
+│  │  │ • 大量随机写  │  │ • 顺序写入为主 │  │ • 持续高吞吐   │         │   │
+│  │  │ • 延迟敏感    │  │ • 低延迟要求   │  │ • 写多读少     │         │   │
+│  │  │ • 多快照版本  │  │ • 频繁快照     │  │ • 空间回收及时 │         │   │
+│  │  └────────────────┘  └────────────────┘  └────────────────┘         │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │ **COW最适合的场景**                                                   │   │
+│  │  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐         │   │
+│  │  │ **备份系统**    │  │ **开发测试环境**│  │ **虚拟化平台** │         │   │
+│  │  │ ──────────────  │  │ ──────────────  │  │ ──────────────  │         │   │
+│  │  │ • 读多写少    │  │ • 频繁克隆     │  │ • VM镜像共享   │         │   │
+│  │  │ • 数据局部性好│  │ • 快速恢复     │  │ • 模板部署     │         │   │
+│  │  │ • 长期保留快照│  │ • 空间效率高   │  │ • 差异管理     │         │   │
+│  │  └────────────────┘  └────────────────┘  └────────────────┘         │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │ **混合策略场景**                                                       │   │
+│  │  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐         │   │
+│  │  │ **分层存储**    │  │ **混合工作负载**│  │ **云存储平台** │         │   │
+│  │  │ ──────────────  │  │ ──────────────  │  │ ──────────────  │         │   │
+│  │  │ • 热数据ROW   │  │ • 根据负载选择 │  │ • 多租户隔离   │         │   │
+│  │  │ • 冷数据COW   │  │ • 动态切换策略 │  │ • QoS保证      │         │   │
+│  │  │ • 自动分层    │  │ • 统计驱动     │  │ • 成本优化     │         │   │
+│  │  └────────────────┘  └────────────────┘  └────────────────┘         │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 实际案例对比
+
+```c
+// 案例1：数据库日志写入 - ROW优势明显
+void database_log_write_comparison() {
+    struct timespec start, end;
+    ssize_t ret;
+    
+    /* ROW方式 - 直接写新位置 */
+    clock_gettime(CLOCK_MONOTONIC, &start);
+    ret = row_write(log_fd, log_buffer, log_size, &log_offset);
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    
+    unsigned long row_ns = (end.tv_sec - start.tv_sec) * 1000000000UL +
+                          (end.tv_nsec - start.tv_nsec);
+    
+    /* COW方式 - 需要读取后复制 */
+    clock_gettime(CLOCK_MONOTONIC, &start);
+    ret = cow_write(log_fd, log_buffer, log_size, &log_offset);
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    
+    unsigned long cow_ns = (end.tv_sec - start.tv_sec) * 1000000000UL +
+                          (end.tv_nsec - start.tv_nsec);
+    
+    pr_info("Database log write: ROW=%lu ns, COW=%lu ns, speedup=%.2fx\n",
+            row_ns, cow_ns, (double)cow_ns / row_ns);
+    
+    /* 典型结果：
+     * ROW: ~50us (仅写入)
+     * COW: ~150us (读取+写入)
+     * Speedup: 3x
+     */
+}
+
+// 案例2：VM镜像模板部署 - COW优势
+void vm_template_deployment_comparison() {
+    int num_vms = 10;
+    size_t template_size = 10UL * 1024 * 1024 * 1024; /* 10GB */
+    
+    /* ROW方式 - 数据分散，局部性差 */
+    struct timespec start, end;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+    
+    for (int i = 0; i < num_vms; i++) {
+        /* ROW会导致每个VM的数据分散在不同位置 */
+        deploy_vm_with_row(template_path, i);
+    }
+    
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    unsigned long row_ms = (end.tv_sec - start.tv_sec) * 1000 +
+                          (end.tv_nsec - start.tv_nsec) / 1000000;
+    
+    /* COW方式 - 共享模板，瞬时克隆 */
+    clock_gettime(CLOCK_MONOTONIC, &start);
+    
+    for (int i = 0; i < num_vms; i++) {
+        /* COW只需复制元数据，数据共享 */
+        deploy_vm_with_cow(template_path, i);
+    }
+    
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    unsigned long cow_ms = (end.tv_sec - start.tv_sec) * 1000 +
+                          (end.tv_nsec - start.tv_nsec) / 1000000;
+    
+    pr_info("Deploy %d VMs: ROW=%lu ms, COW=%lu ms, speedup=%.2fx\n",
+            num_vms, row_ms, cow_ms, (double)row_ms / cow_ms);
+    
+    /* 典型结果：
+     * ROW: ~5000ms (需要写入大量数据)
+     * COW: ~100ms (仅元数据操作)
+     * Speedup: 50x
+     */
+}
+```
+
+### 混合策略：自适应ROW/COW
+
+```c
+// 自适应选择ROW或COW策略
+enum write_strategy {
+    STRATEGY_ROW,
+    STRATEGY_COW,
+    STRATEGY_INPLACE,
+};
+
+struct adaptive_write_context {
+    struct inode *inode;
+    loff_t offset;
+    size_t len;
+    u32 ref_count;
+    u64 access_pattern;
+    u32 write_frequency;
+};
+
+static enum write_strategy select_write_strategy(struct adaptive_write_context *ctx)
+{
+    /* 未共享，直接原地写入 */
+    if (ctx->ref_count <= 1)
+        return STRATEGY_INPLACE;
+    
+    /* 基于访问模式选择策略 */
+    
+    /* 1. 频繁随机小写入 -> ROW */
+    if (ctx->write_frequency > 100 && ctx->len < 4096) {
+        /* 小块随机写，ROW避免读取开销 */
+        return STRATEGY_ROW;
+    }
+    
+    /* 2. 顺序大块写入 -> ROW */
+    if (is_sequential_access(ctx) && ctx->len >= 1024 * 1024) {
+        /* 顺序写大块，ROW性能更好 */
+        return STRATEGY_ROW;
+    }
+    
+    /* 3. 部分块修改 -> COW */
+    if (ctx->len < BLOCK_SIZE / 2) {
+        /* 修改小于半个块，COW避免碎片化 */
+        return STRATEGY_COW;
+    }
+    
+    /* 4. 读多写少 -> COW */
+    if (ctx->access_pattern & ACCESS_READ_HEAVY) {
+        /* 保持数据局部性 */
+        return STRATEGY_COW;
+    }
+    
+    /* 5. 快照数量少 -> COW */
+    if (ctx->ref_count <= 3) {
+        /* 共享不多，COW开销可接受 */
+        return STRATEGY_COW;
+    }
+    
+    /* 6. 快照数量多 -> ROW */
+    if (ctx->ref_count > 10) {
+        /* 大量共享，ROW避免级联复制 */
+        return STRATEGY_ROW;
+    }
+    
+    /* 默认使用ROW */
+    return STRATEGY_ROW;
+}
+
+// 自适应写入实现
+static ssize_t adaptive_write(struct file *file, const char __user *buf,
+                              size_t count, loff_t *ppos)
+{
+    struct adaptive_write_context ctx = {0};
+    enum write_strategy strategy;
+    
+    /* 收集上下文信息 */
+    ctx.inode = file->f_inode;
+    ctx.offset = *ppos;
+    ctx.len = count;
+    ctx.ref_count = get_block_refcount(get_data_block(ctx.inode, *ppos));
+    ctx.access_pattern = get_access_pattern(ctx.inode);
+    ctx.write_frequency = get_write_frequency(ctx.inode);
+    
+    /* 选择最优策略 */
+    strategy = select_write_strategy(&ctx);
+    
+    /* 执行相应的写入操作 */
+    switch (strategy) {
+    case STRATEGY_ROW:
+        return row_write(file, buf, count, ppos);
+    case STRATEGY_COW:
+        return cow_write(file, buf, count, ppos);
+    case STRATEGY_INPLACE:
+        return inplace_write(file, buf, count, ppos);
+    default:
+        return -EINVAL;
+    }
+}
+```
+
+通过深入理解ROW和COW机制的工作原理、性能特性和适用场景，我们可以根据实际需求选择最优的快照实现策略，或者采用自适应混合策略来获得最佳的综合性能。
+
+---
 
 ### 总结
 
