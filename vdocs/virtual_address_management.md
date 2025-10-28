@@ -174,8 +174,11 @@ sequenceDiagram
             TLB->>TLB: 找到映射关系
             Note right of TLB: **快速路径**
             
-            TLB->>-CPU: 返回物理地址0x12345000
+            TLB->>CPU: 返回物理地址0x12345000
             Note right of TLB: **TLB Hit**
+            
+            TLB->>-CPU: 完成查询
+            Note right of TLB: **释放TLB**
             
             CPU->>+Memory: 访问物理地址
             Note right of CPU: **直接访问**
@@ -189,7 +192,7 @@ sequenceDiagram
             CPU->>App: 返回结果
             Note right of CPU: **访问完成**
         else TLB未命中
-            TLB->>-CPU: TLB Miss
+            TLB->>CPU: TLB Miss
             Note right of TLB: **需要页表遍历**
         end
     end
@@ -267,6 +270,9 @@ sequenceDiagram
                 
                 CPU->>TLB: 更新TLB缓存
                 Note right of CPU: **加速下次访问**
+                
+                TLB->>-CPU: 更新完成
+                Note right of TLB: **释放TLB**
                 
                 CPU->>+Memory: 访问物理地址
                 Note right of CPU: **内存访问**
